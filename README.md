@@ -6,3 +6,4 @@ NTU EE3180 Team Project: “Image Background Removal with AI"
 - Joshua Jr
 - Wong Meng Chun
 - Chance
+- Bryan Lim Jia Le
