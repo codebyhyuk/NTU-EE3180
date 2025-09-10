@@ -1,0 +1,27 @@
+{
+  "name": "ntu-ee3180",
+  "version": "1.0.0",
+  "description": "NTU EE3180 Team Project: “Image Background Removal with AI\"",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codebyhyuk/NTU-EE3180.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/codebyhyuk/NTU-EE3180/issues"
+  },
+  "homepage": "https://github.com/codebyhyuk/NTU-EE3180#readme",
+  "dependencies": {
+    "next": "^15.5.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vite": "^7.1.5"
+  }
+}
