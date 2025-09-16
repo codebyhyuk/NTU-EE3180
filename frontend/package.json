@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "tw:watch": "tailwindcss -i ./src/index.css -o ./src/tw.css --watch --content ./index.html --content './src/**/*.{js,jsx,ts,tsx}' --config tailwind.config.cjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@tailwindcss/cli": "^4.1.13",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
@@ -31,3 +33,4 @@
     "vite": "^7.1.2"
   }
 }
+  
