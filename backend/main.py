@@ -7,23 +7,30 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os, io, zipfile, asyncio, httpx
 
-# --- Load backend/.env explicitly ---
+# ---- Load backend/.env explicitly ----
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
-API_KEY = os.getenv("REMOVE_BG_API_KEY")
+# support both names (your leader’s example vs our earlier code)
+API_KEY = os.getenv("REMOVE_BG_API_KEY") or os.getenv("REMOVEBG_API_KEY")
 if not API_KEY:
-    raise RuntimeError(f"REMOVE_BG_API_KEY missing in {ENV_PATH}")
+    raise RuntimeError(f"REMOVE_BG_API_KEY (or REMOVEBG_API_KEY) missing in {ENV_PATH}")
+
+API_HOST = os.getenv("API_HOST", "127.0.0.1")
+API_PORT = int(os.getenv("API_PORT", "8000"))
 
 REMOVE_BG_URL = "https://api.remove.bg/v1.0/removebg"
 
-# --- FastAPI app ---
+# ---- FastAPI app ----
 app = FastAPI(title="DIP Background Removal API")
 
-# Allow Vite dev server to call the backend
+# Allow Vite dev & preview
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:4173", "http://127.0.0.1:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,6 +43,10 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "up"}
+
+@app.get("/version")
+def version():
+    return {"version": "0.1.0", "features": ["single", "batch-zip"]}
 
 # ---------- Single image ----------
 @app.post("/remove-bg")
@@ -69,7 +80,7 @@ def _png_name(name: str) -> str:
 async def batch_remove_bg(
     files: List[UploadFile] = File(...),
     size: str = "auto",
-    concurrent: int = 3,   # tune if you hit 429 (rate-limit)
+    concurrent: int = 3,   # tune if you hit 429 rate limits
     as_zip: bool = True    # true => return a ZIP of PNGs
 ):
     if not files:
