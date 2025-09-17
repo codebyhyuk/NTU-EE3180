@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load backend/.env
-ENV_PATH = Path(__file__).resolve().parent / ".env"
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env" 
 load_dotenv(dotenv_path=ENV_PATH)
 
 app = FastAPI(title="DIP Background Removal API")
@@ -13,8 +13,7 @@ app = FastAPI(title="DIP Background Removal API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:4173", "http://127.0.0.1:4173",
+        "http://localhost:5173", "http://127.0.0.1:5173"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -34,5 +33,5 @@ def version():
     return {"version": "0.1.0", "features": ["single", "batch-zip"]}
 
 # Configure Routes
-from backend.app.routes import remove_bg_routes
+from .routes import remove_bg_routes
 app.include_router(remove_bg_routes.router, tags=["remove-bg"])

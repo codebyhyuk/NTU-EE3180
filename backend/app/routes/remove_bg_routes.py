@@ -3,16 +3,16 @@ from fastapi.responses import StreamingResponse
 from typing import List
 import io, zipfile, asyncio
 from pathlib import Path
-from services.remove_bg_service import RemoveBGService
+from ..services.remove_bg_service import RemoveBGService
 
 router = APIRouter()
-svc = RemoveBGService()
 
 def _png_name(name: str) -> str:
     return f"{Path(name).stem or 'image'}.png"
 
 @router.post("/remove-bg")
 async def remove_bg(file: UploadFile = File(...), size: str = "auto"):
+    svc = RemoveBGService()
     img_bytes = await file.read()
     r = await svc.remove_background(img_bytes, file.filename or "upload.png", size)
 
@@ -32,6 +32,7 @@ async def batch_remove_bg(
     concurrent: int = 3,
     as_zip: bool = True
 ):
+    svc = RemoveBGService()
     if not files:
         raise HTTPException(400, "No files uploaded")
 
