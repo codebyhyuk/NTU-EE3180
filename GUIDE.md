@@ -36,7 +36,8 @@ Since 4 people are working on BE, we need to match our versions and dependecies 
 conda --version
 
 # 2. Create a conda virtual env based on the dependencies I have already made.
-conda env create -f environment.yml
+conda env create -f environment_mac.yml #For MacOS Users
+conda env create -f environment_windows.yml #For Windows Users
 
 # 3. Activate your new virtual environment.
 conda activate ee3180_backend

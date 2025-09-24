@@ -1,8 +1,13 @@
-from app import app
-from app.services import text2image_service
-from flask import send_file
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import List
+import asyncio
+from ..services.text2image_service import Text2ImageService
 
-@app.route('/create-composite-image', methods=['POST'])
+router = APIRouter()
+svc = Text2ImageService()
+
+@router.post('/create-composite-image')
 def create_composite_image_route():
 
     foreground_file = 'path/to/object_foreground.png'
@@ -10,7 +15,7 @@ def create_composite_image_route():
     
     background_file = 'new_background.png' 
 
-    final_image_path = text2image_service.composite_images(
+    final_image_path = svc.composite_images(
         foreground_file, 
         mask_file, 
         background_file

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env" 
 load_dotenv(dotenv_path=ENV_PATH)
 
-app = FastAPI(title="DIP Background Removal API")
+app = FastAPI(title="DIP Image Background Removal with AI APIs")
 
 # Configure CORS
 app.add_middleware(
@@ -22,7 +22,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"ok": True, "service": "remove.bg bridge"}
+    return {"ok": True, "service": "DIP: Image Background Removal with AI"}
 
 @app.get("/health")
 def health():
@@ -30,11 +30,11 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"version": "0.1.0", "features": ["single", "batch-zip"]}
+    return {"version": "0.1.0"}
 
 # Configure Routes
 from .routes import remove_bg_routes
 app.include_router(remove_bg_routes.router, tags=["remove-bg"])
 
 from .routes import text2image_routes
-app.include_router(text2image_routes.router, tages=["text2image"])
+app.include_router(text2image_routes.router, tags=["text2image"])
