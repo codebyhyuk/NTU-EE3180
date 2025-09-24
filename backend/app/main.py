@@ -35,3 +35,6 @@ def version():
 # Configure Routes
 from .routes import remove_bg_routes
 app.include_router(remove_bg_routes.router, tags=["remove-bg"])
+
+from .routes import text2image_routes
+app.include_router(text2image_routes.router, tages=["text2image"])
