@@ -367,151 +367,172 @@ function downloadCropped() {
           </div>
         </section>
 
-        {/* Platform Preview Modal */}
-        {previewModal.open && (
-          <div className="fixed inset-0 z-[100]">
-            {/* overlay */}
-            <div
-              className="absolute inset-0 bg-black/50"
-              onClick={closePreview}
-              aria-hidden
-            />
-            <div className="relative z-[101] h-full w-full grid place-items-center p-4">
-              <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-                {/* header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <div className="font-semibold">
-                    {previewModal.platform === "amazon" && "Amazon Listing Preview"}
-                    {previewModal.platform === "shopee" && "Shopee Product Preview"}
-                    {previewModal.platform === "instagram" && "Instagram Post Preview"}
+          {/* Platform Preview Modal */}
+          {previewModal.open && (
+            <div className="fixed inset-0 z-[100]">
+              {/* overlay */}
+              <div
+                className="absolute inset-0 bg-black/50"
+                onClick={closePreview}
+                aria-hidden
+              />
+
+              {/* centered dialog */}
+              <div className="relative z-[101] h-full w-full grid place-items-center p-4">
+                <div className="
+                    relative w-full 
+                    max-w-xl md:max-w-3xl      /* smaller panel */
+                    bg-white rounded-2xl shadow-2xl overflow-hidden
+                    max-h-[90vh]              /* never grows taller than viewport */
+                  ">
+                  {/* header */}
+                  <div className="flex items-center justify-between px-5 py-4 border-b">
+                    <div className="font-semibold">
+                      {previewModal.platform === "amazon"    && "Amazon Listing Preview"}
+                      {previewModal.platform === "shopee"    && "Shopee Product Preview"}
+                      {previewModal.platform === "instagram" && "Instagram Post Preview"}
+                    </div>
+                    <button
+                      onClick={closePreview}
+                      className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100"
+                      aria-label="Close"
+                    >
+                      ✖️
+                    </button>
                   </div>
-                  <button
-                    onClick={closePreview}
-                    className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100"
-                    aria-label="Close"
-                  >
-                    ✖️
-                  </button>
-                </div>
 
-                {/* body (switch per platform) */}
-                <div className="p-5 md:p-6">
-                  {/* AMAZON MOCK */}
-                  {previewModal.platform === "amazon" && (
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="aspect-square rounded-xl bg-gray-100 grid place-items-center overflow-hidden">
-                        {previewImg ? (
-                          <img src={previewImg} alt="preview" className="h-full object-contain" />
-                        ) : (
-                          <span className="text-5xl">✨</span>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-3">
-                        <h3 className="text-xl font-semibold text-blue-700">
-                          Premium Product – AI Enhanced
-                        </h3>
-                        <div className="text-2xl font-bold">$29.99</div>
-                        <div className="text-green-600 text-sm">✅ In Stock</div>
-                        <div className="text-xs text-gray-500">
-                          FREE delivery tomorrow if you order within 4 hrs 23 mins
-                        </div>
-
-                        <div className="mt-2 flex flex-col gap-3">
-                          <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">
-                            Add to Cart
-                          </button>
-                          <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">
-                            Buy Now
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SHOPEE MOCK */}
-                  {previewModal.platform === "shopee" && (
-                    <div className="rounded-xl border overflow-hidden">
-                      <div className="aspect-[16/10] bg-gray-100 grid place-items-center">
-                        {previewImg ? (
-                          <img src={previewImg} alt="preview" className="h-full object-contain" />
-                        ) : (
-                          <span className="text-5xl">✨</span>
-                        )}
-                      </div>
-
-                      <div className="p-4 md:p-5 bg-white">
-                        <div className="font-medium">Premium Product – AI Enhanced</div>
-                        <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                          ⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span>
-                        </div>
-
-                        <div className="mt-4 grid md:grid-cols-2 gap-3">
-                          <button className="rounded-lg border py-2.5 hover:bg-gray-50">
-                            Add to Cart
-                          </button>
-                          <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">
-                            Buy Now
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* INSTAGRAM MOCK */}
-                  {previewModal.platform === "instagram" && (
-                    <div className="rounded-2xl overflow-hidden"
-                        style={{background: "linear-gradient(135deg, #f99 0%, #f09 30%, #90f 70%, #69f 100%)"}}>
-                      <div className="max-w-md mx-auto my-10 bg-white/90 rounded-xl overflow-hidden shadow-xl">
-                        {/* post header */}
-                        <div className="flex items-center gap-2 px-4 py-3 border-b">
-                          <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
-                          <div className="text-sm font-medium">your_brand</div>
-                        </div>
-
-                        {/* post image */}
-                        <div className="bg-gray-100 grid place-items-center" style={{height: 360}}>
+                  {/* body */}
+                  <div className="p-5 md:p-6">
+                    {/* AMAZON */}
+                    {previewModal.platform === "amazon" && (
+                      <div className="grid md:grid-cols-2 gap-6">
+                        {/* fixed square preview area */}
+                        <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden">
                           {previewImg ? (
-                            <img src={previewImg} alt="preview" className="h-full object-contain" />
+                            <img
+                              src={previewImg}
+                              alt="preview"
+                              className="w-full h-full object-contain"  /* key line */
+                            />
                           ) : (
-                            <span className="text-5xl">✨</span>
+                            <div className="w-full h-full grid place-items-center text-5xl">✨</div>
                           )}
                         </div>
 
-                        {/* actions + caption */}
-                        <div className="px-4 pt-3 pb-4">
-                          <div className="flex items-center gap-4 text-xl mb-2">
-                            ❤️ 💬 📨
+                        <div className="flex flex-col gap-3">
+                          <h3 className="text-xl font-semibold text-blue-700">
+                            Premium Product – AI Enhanced
+                          </h3>
+                          <div className="text-2xl font-bold">$29.99</div>
+                          <div className="text-green-600 text-sm">✅ In Stock</div>
+                          <div className="text-xs text-gray-500">
+                            FREE delivery tomorrow if you order within 4 hrs 23 mins
                           </div>
-                          <div className="text-sm">
-                            <span className="font-semibold">your_brand</span>{" "}
-                            Check out our latest product! AI-enhanced and ready to shine ✨ #product #ai #enhanced
-                          </div>
-                          <div className="mt-3">
-                            <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
-                              Shop Now
+
+                          <div className="mt-2 flex flex-col gap-3">
+                            <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">
+                              Add to Cart
+                            </button>
+                            <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">
+                              Buy Now
                             </button>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
 
-                {/* footer (close) */}
-                <div className="flex justify-end px-5 py-4 border-t">
-                  <button
-                    onClick={closePreview}
-                    className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
-                  >
-                    Close
-                  </button>
+                    {/* SHOPEE */}
+                    {previewModal.platform === "shopee" && (
+                      <div className="rounded-xl border overflow-hidden">
+                        {/* fixed 16:10 area */}
+                        <div className="aspect-[16/10] bg-gray-100">
+                          {previewImg ? (
+                            <img
+                              src={previewImg}
+                              alt="preview"
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <div className="w-full h-full grid place-items-center text-5xl">✨</div>
+                          )}
+                        </div>
+
+                        <div className="p-4 md:p-5 bg-white">
+                          <div className="font-medium">Premium Product – AI Enhanced</div>
+                          <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                            ⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span>
+                          </div>
+
+                          <div className="mt-4 grid md:grid-cols-2 gap-3">
+                            <button className="rounded-lg border py-2.5 hover:bg-gray-50">
+                              Add to Cart
+                            </button>
+                            <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">
+                              Buy Now
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* INSTAGRAM */}
+                    {previewModal.platform === "instagram" && (
+                      <div
+                        className="rounded-2xl overflow-hidden"
+                        style={{ background: "linear-gradient(135deg, #f99 0%, #f09 30%, #90f 70%, #69f 100%)" }}
+                      >
+                        <div className="max-w-sm w-full mx-auto my-6 bg-white/90 rounded-xl overflow-hidden shadow-xl">
+                          {/* header */}
+                          <div className="flex items-center gap-2 px-4 py-3 border-b">
+                            <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
+                            <div className="text-sm font-medium">your_brand</div>
+                          </div>
+
+                          {/* fixed 4:5 image area */}
+                          <div className="w-full aspect-[4/5] bg-gray-100">
+                            {previewImg ? (
+                              <img
+                                src={previewImg}
+                                alt="preview"
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <div className="w-full h-full grid place-items-center text-5xl">✨</div>
+                            )}
+                          </div>
+
+                          {/* actions */}
+                          <div className="px-4 pt-3 pb-4">
+                            <div className="flex items-center gap-4 text-xl mb-2">❤️ 💬 📨</div>
+                            <div className="text-sm">
+                              <span className="font-semibold">your_brand</span>{" "}
+                              Check out our latest product! AI-enhanced and ready to shine ✨ #product #ai #enhanced
+                            </div>
+                            <div className="mt-3">
+                              <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
+                                Shop Now
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* footer */}
+                  <div className="flex justify-end px-5 py-4 border-t">
+                    <button
+                      onClick={closePreview}
+                      className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
       </main>
     </div>
   );
