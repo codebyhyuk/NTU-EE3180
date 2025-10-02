@@ -9,9 +9,34 @@ export default function SingleProcessing() {
   const [brandText, setBrandText] = useState("");
   const [addShadow, setAddShadow] = useState(true);
   const [activeVariant, setActiveVariant] = useState("A");
-
+  const [brandKitChoice, setBrandKitChoice] = useState(null); // "create" | "skip" | null
   const fileInputRef = useRef(null);
+  const [selectedCrop, setSelectedCrop] = useState(null);
+  const [previewModal, setPreviewModal] = useState({ open: false, platform: null });
 
+    // Open/close helpers
+  const openPreview = (platform) => setPreviewModal({ open: true, platform });
+  const closePreview = () => setPreviewModal({ open: false, platform: null });
+  const previewImg = previewURL || null;
+
+  const CROP_OPTIONS = [
+  { id: "square", label: "⬜Square", width: 1080, height: 1080 },
+  { id: "amazon", label: "🛒Amazon", width: 2000, height: 2000 },
+  { id: "story", label: "📱Story", width: 1080, height: 1920 },
+  
+];
+
+function downloadCropped() {
+  if (!selectedCrop) {
+    alert("Please choose a crop option first!");
+    return;
+  }
+
+  const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
+  alert(`You selected: ${opt.label} (${opt.width}x${opt.height}px)\n(Backend will handle actual cropping later)`);
+}
+
+  
   const onPick = () => fileInputRef.current?.click();
   const onChangeFile = (e) => {
     const f = e.target.files?.[0];
@@ -35,7 +60,7 @@ export default function SingleProcessing() {
           {title}
         </div>
         <div className="text-sm font-medium">
-          {`Variant ${id}${isActive ? " ✓" : ""}`}
+          {` ${id}${isActive ? " ✓" : ""}`}
         </div>
       </button>
     );
@@ -47,18 +72,18 @@ export default function SingleProcessing() {
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">⚡</div>
-            <Link to="/" className="font-semibold">PhotoPro</Link>
+            <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">📷</div>
+            <Link to="/" className="font-semibold tracking-tight">PhotoPro</Link>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600">
             <Link className="hover:text-gray-900" to="/">Home</Link>
-            <a className="hover:text-gray-900" href="#">Templates</a>
+
             <span className="font-medium text-gray-900">Single Processing</span>
-            <a className="hover:text-gray-900" href="#">Batch Processing</a>
-            <a className="hover:text-gray-900" href="#">Platforms</a>
-            <a className="hover:text-gray-900" href="#">Analytics</a>
+            <Link  to="/batch-processing" className="hover:text-gray-900">
+                          Batch Processing
+            </Link>
           </nav>
-          <div className="text-xs text-gray-500 pr-2">Page 1</div>
+          
         </div>
       </header>
 
@@ -124,68 +149,27 @@ export default function SingleProcessing() {
               Would you like to remove the background from your image?
             </p>
           </div>
-          <div className="p-5 md:p-6 grid md:grid-cols-2 gap-4">
-            <button
-              onClick={() => setRemoveBg(true)}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md ${
-                removeBg ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"
-              }`}
-            >
-              <div className="text-3xl mb-2">✅</div>
-              <div className="font-medium">Yes, Remove Background</div>
-            </button>
 
+          <div className="p-5 md:p-6">
             <button
-              onClick={() => setRemoveBg(false)}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md ${
-                !removeBg ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"
-              }`}
+              onClick={() => setRemoveBg((prev) => !prev)}   // toggle state
+              className={`w-full rounded-xl border p-6 md:p-7 text-center transition-all duration-300 shadow-sm hover:shadow-md
+                flex flex-col items-center justify-center min-h-[120px]
+                ${removeBg ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
             >
-              <div className="text-3xl mb-2">❌</div>
-              <div className="font-medium">Keep Original Background</div>
+              <div className="text-3xl mb-2">{removeBg ? "✅" : "⬜️"}</div>
+              <div className="font-medium">
+                {removeBg ? "Background Will Be Removed" : "Click to Remove Background"}
+              </div>
             </button>
           </div>
         </section>
 
-        {/* Step 2: Brand Kit */}
+
+        {/* Step 2: Shadow Effects */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6 border-b">
-            <div className="font-semibold">Step 2: Brand Kit Setup</div>
-            <p className="text-sm text-gray-600 mt-1">
-              Would you like to create a brand kit based on text description?
-            </p>
-          </div>
-          <div className="p-5 md:p-6 grid md:grid-cols-2 gap-4">
-            <button
-              className="rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md ring-2 ring-blue-500 bg-blue-50"
-            >
-              <div className="text-3xl mb-2">🎨</div>
-              <div className="font-medium">Create Brand Kit</div>
-            </button>
-
-            <button
-              className="rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md bg-white"
-            >
-              <div className="text-3xl mb-2">⏭️</div>
-              <div className="font-medium">Skip Brand Kit</div>
-            </button>
-          </div>
-
-          <div className="px-5 md:px-6 pb-6">
-            <input
-              type="text"
-              value={brandText}
-              onChange={(e) => setBrandText(e.target.value)}
-              placeholder="minimalist"
-              className="w-full rounded-lg border px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </section>
-
-        {/* Step 3: Shadow Effects */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b">
-            <div className="font-semibold">Step 3: Shadow Effects</div>
+            <div className="font-semibold">Step 2: Shadow Effects</div>
             <p className="text-sm text-gray-600 mt-1">
               Would you like to add shadow effects to your image?
             </p>
@@ -213,26 +197,71 @@ export default function SingleProcessing() {
             </button>
           </div>
         </section>
+        
+
+        
+        {/* Step 3: Brand Kit */}
+        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+          <div className="p-5 md:p-6 border-b">
+            <div className="font-semibold">Step 3: Brand Kit Setup</div>
+            <p className="text-sm text-gray-600 mt-1">
+              Would you like to create a brand kit based on text description?
+            </p>
+          </div>
+
+          <div className="p-5 md:p-6 grid md:grid-cols-2 gap-4">
+            {/* Create Brand Kit Button */}
+            <button
+              onClick={() => setBrandKitChoice("create")}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md 
+                ${brandKitChoice === "create" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
+            >
+              <div className="text-3xl mb-2">🎨</div>
+              <div className="font-medium">Create Brand Kit</div>
+            </button>
+
+            {/* Skip Brand Kit Button */}
+            <button
+              onClick={() => setBrandKitChoice("skip")}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md 
+                ${brandKitChoice === "skip" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
+            >
+              <div className="text-3xl mb-2">⏭️</div>
+              <div className="font-medium">Skip Brand Kit</div>
+            </button>
+          </div>
+
+          {/* Only show input if Create is selected */}
+          {brandKitChoice === "create" && (
+            <div className="px-5 md:px-6 pb-6">
+              <input
+                type="text"
+                value={brandText}
+                onChange={(e) => setBrandText(e.target.value)}
+                placeholder="Describe your brand style (e.g., modern, minimalist, luxury, vibrant)"
+                className="w-full rounded-lg border px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+        </section>
+
+
 
         {/* Processing Complete / Variants */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6 flex items-center justify-between">
-            <div className="font-semibold">Processing Complete!</div>
-            <div className="flex items-center gap-2 text-sm">
-              <button className="px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">↩︎ Undo</button>
-              <button className="px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50">🗂 History</button>
-            </div>
+            <div className="font-semibold">Step 4: Processing your image!</div>
           </div>
 
           <div className="px-5 md:px-6 pb-6 grid md:grid-cols-3 gap-4">
-            {variantBtn("A", "Original")}
-            {variantBtn("B", "Enhanced")}
-            {variantBtn("C", "Premium")}
+            
+            {variantBtn("", "AI-Enhanced Image")}
+            
           </div>
 
           <div className="px-5 md:px-6 pb-6">
             <button className="w-full md:w-auto px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow">
-              ⬇️ Download Selected Variant
+              ⬇️ Download Image
             </button>
           </div>
         </section>
@@ -240,79 +269,249 @@ export default function SingleProcessing() {
         {/* Smart Crop */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6">
-            <div className="font-semibold">Smart Crop for Platforms <span className="text-gray-400 text-sm">(Optional)</span></div>
+            <div className="font-semibold">
+              Step 5: Smart Crop for Platforms{" "}
+              <span className="text-gray-400 text-sm">(Optional)</span>
+            </div>
             <p className="text-sm text-gray-600 mt-1">
               Want to optimize for specific platforms? Choose a crop format below and download the cropped version.
             </p>
           </div>
 
-          <div className="px-5 md:px-6 pb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-            {["Square", "Amazon", "Story", "Thumbnail"].map((label) => (
-              <div key={label} className="rounded-xl border bg-white p-4 text-center">
-                <div className="h-12 rounded bg-gray-100 mb-2 mx-auto w-16" />
-                <div className="text-sm text-gray-700">{label}</div>
-              </div>
-            ))}
+          <div className="px-5 md:px-6 pb-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+            {CROP_OPTIONS.map(opt => {
+              const active = selectedCrop === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSelectedCrop(opt.id)}
+                  className={`rounded-xl border p-4 text-center transition shadow-sm hover:shadow-md
+                    ${active ? "ring-2 ring-violet-500 bg-violet-50" : "bg-white"}`}
+                >
+                  <div className="h-12 w-16 mx-auto rounded bg-gray-100 mb-2" />
+                  <div className="text-sm text-gray-800 font-medium">{opt.label}</div>
+                  <div className="text-xs text-gray-500">{opt.width}×{opt.height}px</div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="px-5 md:px-6 pb-6">
-            <div className="rounded-xl border bg-white p-4 mb-4">
-              <div className="flex items-start gap-3">
-                <div className="text-green-600 mt-0.5">✅</div>
-                <div>
-                  <div className="font-medium text-green-700">Accessibility Check Passed</div>
-                  <div className="text-sm text-green-700/80">
-                    Good contrast ratio between product and background
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow">
+            <button
+              onClick={downloadCropped}
+              disabled={!selectedCrop}
+              className={`px-4 py-2 rounded-lg font-medium shadow
+                ${!selectedCrop
+                  ? "bg-emerald-300 cursor-not-allowed text-white/80"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
+            >
               ⬇️ Download Cropped
             </button>
           </div>
         </section>
 
-        {/* Platform previews + actions */}
+
+        {/* Step 7: Platform Preview */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6">
-            <div className="font-semibold mb-3">Preview on Platforms</div>
+            <div className="font-semibold mb-3">🛍 Step 6: Platform Preview</div>
             <p className="text-sm text-gray-600 mb-4">
-              See how your processed image looks on different platforms
+              See how your processed image could look on different platforms. Click to preview.
             </p>
 
-            <div className="grid md:grid-cols-4 gap-4 mb-6">
-              {["Amazon", "Shopee", "Instagram", "TikTok"].map((p) => (
-                <div key={p} className="rounded-xl border p-4 text-center">
-                  <div className="h-16 rounded bg-gray-100 mb-2" />
-                  <div className="text-sm">{p}</div>
+            {/* Clickable cards */}
+            <div className="grid md:grid-cols-3 gap-5">
+              {/* Amazon */}
+              <button
+                onClick={() => openPreview("amazon")}
+                className="group rounded-2xl border hover:border-blue-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
+              >
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
+                  🛒
                 </div>
-              ))}
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-3">
-              <button className="flex-1 px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow">
-                ⬇️ Download Image
+                <div className="px-4 py-3">
+                  <div className="font-medium">Amazon</div>
+                  <div className="text-xs text-gray-500">Product listing layout</div>
+                </div>
               </button>
-              <button className="flex-1 px-5 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium shadow">
-                ☁️ Save to Cloud
+
+              {/* Shopee */}
+              <button
+                onClick={() => openPreview("shopee")}
+                className="group rounded-2xl border hover:border-orange-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
+              >
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
+                  🛍️
+                </div>
+                <div className="px-4 py-3">
+                  <div className="font-medium">Shopee</div>
+                  <div className="text-xs text-gray-500">Mobile-first design</div>
+                </div>
+              </button>
+
+              {/* Instagram */}
+              <button
+                onClick={() => openPreview("instagram")}
+                className="group rounded-2xl border hover:border-pink-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
+              >
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
+                  📸
+                </div>
+                <div className="px-4 py-3">
+                  <div className="font-medium">Instagram</div>
+                  <div className="text-xs text-gray-500">Social media posts</div>
+                </div>
               </button>
             </div>
           </div>
         </section>
 
-        {/* 1-Click Export */}
-        <section className="mb-12">
-          <div className="grid md:grid-cols-2 gap-4">
-            <button className="w-full px-5 py-3 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold shadow">
-              🛒 Amazon
-            </button>
-            <button className="w-full px-5 py-3 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-semibold shadow">
-              🛍 Shopee
-            </button>
+        {/* Platform Preview Modal */}
+        {previewModal.open && (
+          <div className="fixed inset-0 z-[100]">
+            {/* overlay */}
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={closePreview}
+              aria-hidden
+            />
+            <div className="relative z-[101] h-full w-full grid place-items-center p-4">
+              <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+                {/* header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b">
+                  <div className="font-semibold">
+                    {previewModal.platform === "amazon" && "Amazon Listing Preview"}
+                    {previewModal.platform === "shopee" && "Shopee Product Preview"}
+                    {previewModal.platform === "instagram" && "Instagram Post Preview"}
+                  </div>
+                  <button
+                    onClick={closePreview}
+                    className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100"
+                    aria-label="Close"
+                  >
+                    ✖️
+                  </button>
+                </div>
+
+                {/* body (switch per platform) */}
+                <div className="p-5 md:p-6">
+                  {/* AMAZON MOCK */}
+                  {previewModal.platform === "amazon" && (
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div className="aspect-square rounded-xl bg-gray-100 grid place-items-center overflow-hidden">
+                        {previewImg ? (
+                          <img src={previewImg} alt="preview" className="h-full object-contain" />
+                        ) : (
+                          <span className="text-5xl">✨</span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-3">
+                        <h3 className="text-xl font-semibold text-blue-700">
+                          Premium Product – AI Enhanced
+                        </h3>
+                        <div className="text-2xl font-bold">$29.99</div>
+                        <div className="text-green-600 text-sm">✅ In Stock</div>
+                        <div className="text-xs text-gray-500">
+                          FREE delivery tomorrow if you order within 4 hrs 23 mins
+                        </div>
+
+                        <div className="mt-2 flex flex-col gap-3">
+                          <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">
+                            Add to Cart
+                          </button>
+                          <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">
+                            Buy Now
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SHOPEE MOCK */}
+                  {previewModal.platform === "shopee" && (
+                    <div className="rounded-xl border overflow-hidden">
+                      <div className="aspect-[16/10] bg-gray-100 grid place-items-center">
+                        {previewImg ? (
+                          <img src={previewImg} alt="preview" className="h-full object-contain" />
+                        ) : (
+                          <span className="text-5xl">✨</span>
+                        )}
+                      </div>
+
+                      <div className="p-4 md:p-5 bg-white">
+                        <div className="font-medium">Premium Product – AI Enhanced</div>
+                        <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                          ⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span>
+                        </div>
+
+                        <div className="mt-4 grid md:grid-cols-2 gap-3">
+                          <button className="rounded-lg border py-2.5 hover:bg-gray-50">
+                            Add to Cart
+                          </button>
+                          <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">
+                            Buy Now
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* INSTAGRAM MOCK */}
+                  {previewModal.platform === "instagram" && (
+                    <div className="rounded-2xl overflow-hidden"
+                        style={{background: "linear-gradient(135deg, #f99 0%, #f09 30%, #90f 70%, #69f 100%)"}}>
+                      <div className="max-w-md mx-auto my-10 bg-white/90 rounded-xl overflow-hidden shadow-xl">
+                        {/* post header */}
+                        <div className="flex items-center gap-2 px-4 py-3 border-b">
+                          <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
+                          <div className="text-sm font-medium">your_brand</div>
+                        </div>
+
+                        {/* post image */}
+                        <div className="bg-gray-100 grid place-items-center" style={{height: 360}}>
+                          {previewImg ? (
+                            <img src={previewImg} alt="preview" className="h-full object-contain" />
+                          ) : (
+                            <span className="text-5xl">✨</span>
+                          )}
+                        </div>
+
+                        {/* actions + caption */}
+                        <div className="px-4 pt-3 pb-4">
+                          <div className="flex items-center gap-4 text-xl mb-2">
+                            ❤️ 💬 📨
+                          </div>
+                          <div className="text-sm">
+                            <span className="font-semibold">your_brand</span>{" "}
+                            Check out our latest product! AI-enhanced and ready to shine ✨ #product #ai #enhanced
+                          </div>
+                          <div className="mt-3">
+                            <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
+                              Shop Now
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* footer (close) */}
+                <div className="flex justify-end px-5 py-4 border-t">
+                  <button
+                    onClick={closePreview}
+                    className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
+        )}
       </main>
     </div>
   );
