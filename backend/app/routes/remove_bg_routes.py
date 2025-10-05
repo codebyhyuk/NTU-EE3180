@@ -1,71 +1,68 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
-from typing import List
-import io, zipfile, asyncio
 from pathlib import Path
+import io
+from typing import List, Optional
+
+from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
+
 from ..services.remove_bg_service import RemoveBGService
+from ..services.image_io_service import (
+    validate_ext,
+    to_png_rgba_bytes,
+    new_batch_id,
+    short_uid,
+    save_step_png,
+    zip_paths_for_batch_step,
+)
 
 router = APIRouter()
-
-def _png_name(name: str) -> str:
-    return f"{Path(name).stem or 'image'}.png"
+svc = RemoveBGService()
 
 @router.post("/remove-bg")
-async def remove_bg(file: UploadFile = File(...), size: str = "auto"):
-    svc = RemoveBGService()
-    img_bytes = await file.read()
-    r = await svc.remove_background(img_bytes, file.filename or "upload.png", size)
-
-    if r.status_code != 200:
-        raise HTTPException(r.status_code, r.text)
-
-    headers = {
-        "Content-Disposition": f'inline; filename="output.png"',
-        "Cache-Control": "no-store",
-    }
-    return StreamingResponse(iter([r.content]), media_type="image/png", headers=headers)
+async def remove_bg_single(
+    file: UploadFile = File(..., description="jpg/png/webp"),
+    batch_id: Optional[str] = Form(None),
+    size: str = Query("auto"),
+    meta: int = Query(0),
+):
+    try:
+        validate_ext(file.filename)
+        raw = await file.read()
+        png_rgba = to_png_rgba_bytes(raw)
+        out_png = await svc.remove_background(png_rgba, size)
+        bid = batch_id or new_batch_id()
+        out_name = f"{Path(file.filename).stem}_{short_uid()}.png"
+        saved_path = save_step_png(bid, "remove_bg", out_name, out_png)
+        if meta:
+            return JSONResponse({"batch_id": bid, "saved_path": saved_path})
+        return StreamingResponse(io.BytesIO(out_png), media_type="image/png", headers={"Content-Disposition": f"inline; filename={out_name}"})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 @router.post("/batch-remove-bg")
 async def batch_remove_bg(
     files: List[UploadFile] = File(...),
-    size: str = "auto",
-    concurrent: int = 3,
-    as_zip: bool = True
+    batch_id: Optional[str] = Form(None),
+    size: str = Query("auto"),
+    as_zip: int = Query(0),
 ):
-    svc = RemoveBGService()
     if not files:
-        raise HTTPException(400, "No files uploaded")
-
-    contents = await asyncio.gather(*[f.read() for f in files])
-    names = [f.filename or f"image_{i}.png" for i, f in enumerate(files)]
-
-    sem = asyncio.Semaphore(max(1, min(concurrent, 8)))
-
-    async def process_one(name: str, data: bytes):
-        async with sem:
-            r = await svc.remove_background(data, name, size)
-            if r.status_code == 200:
-                return {"filename": name, "ok": True, "content": r.content}
-            return {"filename": name, "ok": False, "status": r.status_code, "error": r.text}
-
-    results = await asyncio.gather(*[process_one(n, d) for n, d in zip(names, contents)])
-
-    if as_zip:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
-            for res in results:
-                if res.get("ok"):
-                    z.writestr(_png_name(res["filename"]), res["content"])
-                else:
-                    msg = f"Failed: {res.get('status')} {res.get('error','')}".strip()
-                    z.writestr(f"{_png_name(res['filename'])}.error.txt", msg or "Unknown error")
-        buf.seek(0)
-        headers = {"Content-Disposition": 'attachment; filename="cutouts.zip"'}
-        return StreamingResponse(buf, media_type="application/zip", headers=headers)
-
-    return {
-        "processed": len(results),
-        "success": sum(1 for r in results if r.get("ok")),
-        "failed": sum(1 for r in results if not r.get("ok")),
-        "results": [{k: v for k, v in r.items() if k != "content"} for r in results],
-    }
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    try:
+        bid = batch_id or new_batch_id()
+        prepared: list[tuple[str, bytes]] = []
+        for f in files:
+            validate_ext(f.filename)
+            raw = await f.read()
+            prepared.append((f.filename, to_png_rgba_bytes(raw)))
+        batch = await svc.batch_remove_background(prepared, size=size)
+        saved_paths: list[str] = []
+        for res in batch:
+            if res.get("ok"):
+                out_name = f"{Path(res['filename']).stem}_{short_uid()}.png"
+                saved_paths.append(save_step_png(bid, "remove_bg", out_name, res["content"]))
+        if as_zip:
+            return zip_paths_for_batch_step(bid, "remove_bg")
+        return {"batch_id": bid, "results": [{"saved_path": p} for p in saved_paths]}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
