@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from ..services.remove_bg_service import RemoveBGService
 from ..services.image_io_service import (
     validate_ext,
-    to_png_rgba_bytes,
     new_batch_id,
     short_uid,
     save_step_png,
@@ -23,13 +22,21 @@ async def remove_bg_single(
     file: UploadFile = File(..., description="jpg/png/webp"),
     batch_id: Optional[str] = Form(None),
     size: str = Query("auto"),
+    bg_color: Optional[str] = Query(None),
+    bg_image_url: Optional[str] = Query(None),
     meta: int = Query(0),
 ):
     try:
         validate_ext(file.filename)
         raw = await file.read()
-        png_rgba = to_png_rgba_bytes(raw)
-        out_png = await svc.remove_background(png_rgba, size)
+        out_png = await svc.remove_background(
+            raw,
+            size=size,
+            filename_hint=file.filename,
+            format="png",
+            bg_color=bg_color,
+            bg_image_url=bg_image_url,
+        )
         bid = batch_id or new_batch_id()
         out_name = f"{Path(file.filename).stem}_{short_uid()}.png"
         saved_path = save_step_png(bid, "remove_bg", out_name, out_png)
@@ -44,19 +51,29 @@ async def batch_remove_bg(
     files: List[UploadFile] = File(...),
     batch_id: Optional[str] = Form(None),
     size: str = Query("auto"),
+    bg_color: Optional[str] = Query(None),
+    bg_image_url: Optional[str] = Query(None),
     as_zip: int = Query(0),
+    concurrent: int = Query(3, ge=1, le=16),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
     try:
         bid = batch_id or new_batch_id()
-        prepared: list[tuple[str, bytes]] = []
+        prepared: List[tuple[str, bytes]] = []
         for f in files:
             validate_ext(f.filename)
             raw = await f.read()
-            prepared.append((f.filename, to_png_rgba_bytes(raw)))
-        batch = await svc.batch_remove_background(prepared, size=size)
-        saved_paths: list[str] = []
+            prepared.append((f.filename, raw))
+        batch = await svc.batch_remove_background(
+            prepared,
+            size=size,
+            format="png",
+            bg_color=bg_color,
+            bg_image_url=bg_image_url,
+            concurrent=concurrent,
+        )
+        saved_paths: List[str] = []
         for res in batch:
             if res.get("ok"):
                 out_name = f"{Path(res['filename']).stem}_{short_uid()}.png"
