@@ -38,3 +38,6 @@ app.include_router(remove_bg_routes.router, tags=["remove-bg"])
 
 from .routes import text2image_routes
 app.include_router(text2image_routes.router, tags=["text2image"])
+
+from .routes import shadow_routes
+app.include_router(shadow_routes.router, tags=["shadow-generation"])
