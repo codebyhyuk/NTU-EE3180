@@ -1,7 +1,8 @@
 # backend/app/main.py
 import os
-import json                      # NEW
-import zipfile                   # NEW
+import json
+import zipfile
+import tempfile, uuid, shutil, pathlib
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 
@@ -9,10 +10,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.background import BackgroundTask   # NEW
+from starlette.background import BackgroundTask
 from PIL import Image
 
-from . import utils
+from . import utils  # keep relative import; run with: uvicorn backend.main:app --reload
 
 # Load backend/.env (this file lives at backend/app/main.py)
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -24,7 +25,7 @@ API_PORT = int(os.getenv("API_PORT", "8000"))
 raw_origins = os.getenv("CORS_ORIGINS", "")
 ALLOW_ORIGINS = [o.strip() for o in raw_origins.split(",") if o.strip()] or ["*"]
 
-app = FastAPI(title="E009 Custom Cropper", version="2.2.0")  # bumped
+app = FastAPI(title="E009 Custom Cropper", version="2.3.0")
 
 # CORS
 app.add_middleware(
@@ -37,10 +38,9 @@ app.add_middleware(
 
 # ---- Presets ----
 PRESETS = {
-    "story":  {"ratio": 9 / 16, "size": (1080, 1920)},
-    "post":   {"ratio": 1.0,    "size": (1080, 1080)},
-    "shopee": {"ratio": 4 / 5,  "size": (1080, 1350)},
-    "amazon": {"ratio": 1.0,    "size": (2000, 2000)},
+    "instagram": {"ratio": 1.0,   "size": (1080, 1080)},
+    "shopee":    {"ratio": 4 / 5, "size": (1080, 1350)},
+    "amazon":    {"ratio": 1.0,   "size": (2000, 2000)},
 }
 
 # ---- Helpers ----
@@ -56,12 +56,11 @@ def pil_to_png_response(img: Image.Image, filename: str = "cropped.png") -> Stre
 
 def _process_one_png(img_bytes: bytes, filename: str, preset: str, box: Optional[Dict[str, Any]]) -> tuple[str, bytes]:
     """
-    Reuse your existing pipeline for a single image.
-    Returns: (output_filename, png_bytes)
+    Reuse the single-image pipeline. Returns: (output_filename, png_bytes)
     """
     meta = PRESETS[preset]
     target_ratio = meta["ratio"]
-    target_size  = meta["size"]
+    target_size = meta["size"]
 
     img = Image.open(BytesIO(img_bytes))
     img.load()
@@ -85,11 +84,11 @@ def _process_one_png(img_bytes: bytes, filename: str, preset: str, box: Optional
 def health():
     return {"ok": True, "service": "E009 Custom Cropper"}
 
-@app.post("/crop/custom", summary="Preset crop (story/post/shopee/amazon). Optional user box to choose position.")
+@app.post("/crop/custom", summary="Preset crop (instagram/shopee/amazon). Optional user box to choose position.")
 async def crop_custom(
-    file: UploadFile = File(..., description="Processed PNG"),
-    preset: str = Query(..., description="story | post | shopee | amazon"),
-    # Optional user-dragged box (in image-native pixels). Send these as multipart form fields.
+    file: UploadFile = File(..., description="PNG image"),
+    preset: str = Query(..., description="instagram | shopee | amazon"),
+    # Optional user-dragged box (in image-native pixels)
     x: Optional[int] = Form(None, description="Top-left X of user box"),
     y: Optional[int] = Form(None, description="Top-left Y of user box"),
     width: Optional[int] = Form(None, description="Width of user box"),
@@ -127,20 +126,15 @@ async def crop_custom(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Cropping failed: {str(e)}")
 
-# ---- NEW: Batch endpoint ----
+# ---- Batch endpoint (many files in one request → returns ZIP) ----
 @app.post("/crop/custom/batch", summary="Batch preset crop → returns a ZIP of PNGs")
 async def crop_custom_batch(
     files: List[UploadFile] = File(..., description="One or more PNGs"),
-    preset: str = Query(..., description="story | post | shopee | amazon"),
+    preset: str = Query(..., description="instagram | shopee | amazon"),
     # Optional JSON mapping filenames to crop boxes:
     # {"img1.png":{"x":10,"y":20,"width":500,"height":700}, "img2.png": {...}}
     boxes: Optional[str] = Form(None),
 ):
-    """
-    Apply the selected preset to all uploaded PNGs.
-    If 'boxes' JSON is provided, use a per-file box (matched by filename); else center-crop.
-    Returns application/zip. Any per-file errors are included as ERROR_*.txt in the zip.
-    """
     if preset not in PRESETS:
         raise HTTPException(status_code=400, detail=f"Invalid preset '{preset}'. Choose: {', '.join(PRESETS.keys())}")
 
@@ -155,13 +149,11 @@ async def crop_custom_batch(
     with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for f in files:
             if f.content_type not in ("image/png", "application/octet-stream"):
-                # Put an error note inside the zip rather than failing whole batch
                 zf.writestr(f"ERROR_{f.filename or 'unknown'}.txt", "Please upload a PNG file.")
                 continue
 
             raw = await f.read()
             box = boxes_map.get(f.filename) if boxes_map else None
-
             try:
                 out_name, out_png = _process_one_png(raw, f.filename, preset, box)
                 zf.writestr(out_name, out_png)
@@ -175,10 +167,83 @@ async def crop_custom_batch(
         zip_buf,
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="batch_crops.zip"'},
-        background=BackgroundTask(lambda: None),  # placeholder cleanup
+        background=BackgroundTask(lambda: None),
     )
 
-# Optional: local dev entrypoint
+# ---- Session-based workflow (crop one-by-one → finalize ZIP) ----
+SESSIONS_ROOT = pathlib.Path(tempfile.gettempdir()) / "e009_sessions"
+SESSIONS_ROOT.mkdir(exist_ok=True)
+
+def _session_dir(session_id: str) -> pathlib.Path:
+    safe = "".join(ch for ch in session_id if ch.isalnum() or ch in "-_")
+    return SESSIONS_ROOT / safe
+
+@app.post("/session/start")
+def session_start():
+    sid = uuid.uuid4().hex
+    d = _session_dir(sid)
+    d.mkdir(parents=True, exist_ok=True)
+    return {"session_id": sid}
+
+@app.post("/session/{session_id}/crop")
+async def session_crop_one(
+    session_id: str,
+    file: UploadFile = File(..., description="PNG"),
+    preset: str = Query(..., description="instagram | shopee | amazon"),
+    x: Optional[int] = Form(None),
+    y: Optional[int] = Form(None),
+    width: Optional[int] = Form(None),
+    height: Optional[int] = Form(None),
+):
+    if preset not in PRESETS:
+        raise HTTPException(status_code=400, detail=f"Invalid preset '{preset}'. Choose: {', '.join(PRESETS.keys())}")
+    if file.content_type not in ("image/png", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Please upload a PNG file.")
+
+    d = _session_dir(session_id)
+    if not d.exists():
+        raise HTTPException(status_code=404, detail="Unknown session_id")
+
+    raw = await file.read()
+    box = None
+    if all(v is not None for v in (x, y, width, height)):
+        box = {"x": x, "y": y, "width": width, "height": height}
+
+    try:
+        out_name, out_png = _process_one_png(raw, file.filename, preset, box)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Cropping failed: {str(e)}")
+
+    out_path = d / out_name
+    with open(out_path, "wb") as fh:
+        fh.write(out_png)
+
+    return {"session_id": session_id, "saved": out_name}
+
+@app.post("/session/{session_id}/finalize")
+def session_finalize(session_id: str):
+    d = _session_dir(session_id)
+    if not d.exists():
+        raise HTTPException(status_code=404, detail="Unknown session_id")
+
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(d.glob("*")):
+            if p.is_file():
+                zf.write(p, arcname=p.name)
+
+    zip_buf.seek(0)
+    shutil.rmtree(d, ignore_errors=True)
+
+    return StreamingResponse(
+        zip_buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="session_{session_id}.zip"'},
+    )
+
+# ---- Local dev entrypoint ----
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host=API_HOST, port=API_PORT, reload=True)
+
+
