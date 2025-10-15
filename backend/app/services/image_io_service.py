@@ -10,6 +10,8 @@ from fastapi.responses import StreamingResponse
 OUTPUTS_ROOT = Path(__file__).resolve().parents[1] / "outputs"
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 STEPS = ["remove_bg", "shadow", "crop"]
+MIN_WIDTH = 512
+MIN_HEIGHT = 512
 
 def new_batch_id() -> str:
     return uuid.uuid4().hex[:12]
@@ -24,6 +26,8 @@ def validate_ext(filename: str) -> None:
 def to_png_rgba_bytes(data: bytes) -> bytes:
     from io import BytesIO
     with Image.open(BytesIO(data)) as im:
+        if im.width < MIN_WIDTH or im.height < MIN_HEIGHT:
+            raise HTTPException(status_code=400, detail=f"Image too small: {im.width}x{im.height}. Minimum is {MIN_WIDTH}x{MIN_HEIGHT}.")
         out = BytesIO()
         im.convert("RGBA").save(out, format="PNG")
         return out.getvalue()
