@@ -1,290 +1,1062 @@
-import React, { useRef, useState } from "react";
+// ProcessingAdaptive.jsx
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
-export default function SingleProcessing() {
-  const [file, setFile] = useState(null);
-  const [previewURL, setPreviewURL] = useState(null);
-
-  const [removeBg, setRemoveBg] = useState(true);
-  const [brandText, setBrandText] = useState("");
-  const [addShadow, setAddShadow] = useState(true);
-  const [activeVariant, setActiveVariant] = useState("A");
-  const [brandKitChoice, setBrandKitChoice] = useState(null); // "create" | "skip" | null
-  const fileInputRef = useRef(null);
-  const [selectedCrop, setSelectedCrop] = useState(null);
-  const [previewModal, setPreviewModal] = useState({ open: false, platform: null });
-
-    // Open/close helpers
-  const openPreview = (platform) => setPreviewModal({ open: true, platform });
-  const closePreview = () => setPreviewModal({ open: false, platform: null });
-  const previewImg = previewURL || null;
-
-  const CROP_OPTIONS = [
-  { id: "square", label: "⬜Square", width: 1080, height: 1080 },
-  { id: "amazon", label: "🛒Amazon", width: 2000, height: 2000 },
-  { id: "story", label: "📱Story", width: 1080, height: 1920 },
-  
-];
-
-function downloadCropped() {
-  if (!selectedCrop) {
-    alert("Please choose a crop option first!");
-    return;
-  }
-
-  const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
-  alert(`You selected: ${opt.label} (${opt.width}x${opt.height}px)\n(Backend will handle actual cropping later)`);
+/* ============================================
+   🔌 Fake backend simulation — replace later
+   Each function must resolve to a Blob.
+============================================ */
+async function apiRemoveBg(blob)                { await new Promise(r=>setTimeout(r,800)); return blob; }
+async function apiAddShadow(blob)               { await new Promise(r=>setTimeout(r,600)); return blob; }
+async function apiApplyBrand(blob, description) { await new Promise(r=>setTimeout(r,700)); return blob; }
+async function apiCrop(blob, { width, height }) { await new Promise(r=>setTimeout(r,700)); return blob; }
+async function apiCropServer(blob, { width, height, id }, viewport) {
+  await new Promise(r => setTimeout(r, 600));
+  return blob;
 }
 
-  
-  const onPick = () => fileInputRef.current?.click();
-  const onChangeFile = (e) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setFile(f);
-      const url = URL.createObjectURL(f);
-      setPreviewURL(url);
-    }
+/* ============================================
+   🧠 Fake AI description generator (replace later)
+============================================ */
+async function apiGenerateDescription(blob, tone = "default") {
+  await new Promise(r => setTimeout(r, 850));
+  const toneMap = {
+    default: { title: "Premium Product", vibe: "clean, benefit-led copy" },
+    luxury:  { title: "Luxury Edition", vibe: "elegant, refined tone" },
+    minimal: { title: "Minimal Series", vibe: "simple, modern tone" },
+    playful: { title: "Playful Pick",  vibe: "fun, friendly tone" },
+    tech:    { title: "Pro Tech",      vibe: "spec-forward, precise tone" },
+  };
+  const t = toneMap[tone] || toneMap.default;
+  return `${t.title} — crafted for everyday performance.\n\n• Key Benefits: durable build, smooth finish, easy to clean\n• Use Cases: home, studio, travel\n• Materials: premium-grade components\n• Care: wipe clean with a soft cloth\n\nWhy you'll love it: ${t.vibe} highlighting quality, versatility, and a polished presentation.\n\nSEO Tags: modern, premium, durable, versatile`;
+}
+
+/* =========================
+   Small utilities
+========================= */
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+function getPoint(e) {
+  if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+function clampToCover(track, frameW, frameH) {
+  const w = track.natW * track.scale;
+  const h = track.natH * track.scale;
+  const minX = Math.min(0, frameW - w);
+  const maxX = Math.max(0, frameW - w);
+  const minY = Math.min(0, frameH - h);
+  const maxY = Math.max(0, frameH - h);
+  if (track.x < minX) track.x = minX;
+  if (track.x > maxX) track.x = maxX;
+  if (track.y < minY) track.y = minY;
+  if (track.y > maxY) track.y = maxY;
+}
+function toNormalizedViewport(track, frameW, frameH) {
+  const x0 = (-track.x) / track.scale;
+  const y0 = (-track.y) / track.scale;
+  const wImg = frameW / track.scale;
+  const hImg = frameH / track.scale;
+  return {
+    x: Math.max(0, x0 / track.natW),
+    y: Math.max(0, y0 / track.natH),
+    width: Math.min(1, wImg / track.natW),
+    height: Math.min(1, hImg / track.natH),
+  };
+}
+
+/* =========================
+   Manual Cropper Component
+========================= */
+function InteractiveCropper({ cropper, setCropper, options, onClose }) {
+  const opt = options.find(o => o.id === cropper.optId);
+  const frameRef = useRef(null);
+  const [frameSize, setFrameSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setFrameSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setFrameSize({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!frameSize.w || !frameSize.h) return;
+    setCropper(prev => {
+      const tracks = prev.tracks.map(t => {
+        const sx = frameSize.w / t.natW;
+        const sy = frameSize.h / t.natH;
+        const cover = Math.max(sx, sy);
+        const x = (frameSize.w - t.natW * cover) / 2;
+        const y = (frameSize.h - t.natH * cover) / 2;
+        return { ...t, scale: cover, x, y };
+      });
+      return { ...prev, tracks };
+    });
+  }, [frameSize.w, frameSize.h, setCropper]);
+
+  const t = cropper.tracks[cropper.index];
+
+  const startDrag = (e) => { e.preventDefault(); setCropper(prev => ({ ...prev, dragging: true, last: getPoint(e) })); };
+  const moveDrag = (e) => {
+    if (!cropper.dragging) return;
+    const p = getPoint(e);
+    const dx = p.x - cropper.last.x;
+    const dy = p.y - cropper.last.y;
+    setCropper(prev => {
+      const tracks = prev.tracks.slice();
+      const cur = { ...tracks[prev.index] };
+      cur.x += dx; cur.y += dy;
+      clampToCover(cur, frameSize.w, frameSize.h);
+      tracks[prev.index] = cur;
+      return { ...prev, tracks, last: p };
+    });
+  };
+  const endDrag = () => setCropper(prev => ({ ...prev, dragging: false }));
+
+  const wheelZoom = (e) => {
+    e.preventDefault();
+    const delta = -e.deltaY;
+    const zoomFactor = Math.exp(delta * 0.0012);
+    setCropper(prev => {
+      const tracks = prev.tracks.slice();
+      const cur = { ...tracks[prev.index] };
+      const cx = frameSize.w / 2, cy = frameSize.h / 2;
+
+      const beforeW = cur.natW * cur.scale;
+      const beforeH = cur.natH * cur.scale;
+
+      cur.scale *= zoomFactor;
+
+      const minScale = Math.max(frameSize.w / cur.natW, frameSize.h / cur.natH);
+      if (cur.scale < minScale) cur.scale = minScale;
+
+      const afterW = cur.natW * cur.scale;
+      const afterH = cur.natH * cur.scale;
+
+      cur.x = cx - (cx - cur.x) * (afterW / beforeW);
+      cur.y = cy - (cy - cur.y) * (afterH / beforeH);
+
+      clampToCover(cur, frameSize.w, frameSize.h);
+      tracks[prev.index] = cur;
+      return { ...prev, tracks };
+    });
   };
 
-  const variantBtn = (id, title) => {
-    const isActive = activeVariant === id;
-    return (
-      <button
-        onClick={() => setActiveVariant(id)}
-        className={`w-full rounded-xl border bg-white shadow-sm hover:shadow-md transition p-4 text-center ${
-          isActive ? "ring-2 ring-blue-500" : ""
-        }`}
-      >
-        <div className="h-28 rounded-md bg-gray-100 mb-3 flex items-center justify-center text-gray-400">
-          {title}
-        </div>
-        <div className="text-sm font-medium">
-          {` ${id}${isActive ? " ✓" : ""}`}
-        </div>
-      </button>
-    );
+  const downloadAll = async () => {
+    if (!frameSize.w || !frameSize.h) return;
+    const tasks = cropper.tracks.map(async (tr, i) => {
+      const vp = toNormalizedViewport(tr, frameSize.w, frameSize.h);
+      const out = await apiCropServer(tr.baseBlob, opt, vp);
+      const url = URL.createObjectURL(out);
+      const a = document.createElement("a");
+      a.href = url; a.download = `cropped_${i + 1}_${opt.id}.png`; a.click();
+      URL.revokeObjectURL(url);
+    });
+    await Promise.all(tasks);
+    onClose();
   };
 
   return (
+    <div className="fixed inset-0 z-[140]">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
+      <div className="relative z-[141] h-full w-full grid place-items-center p-4">
+        <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="font-semibold">Manual Crop – {opt.label} ({opt.width}×{opt.height})</div>
+            <button onClick={onClose} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+          </div>
+
+          <div className="p-5 md:p-6">
+            <div
+              ref={frameRef}
+              className="relative mx-auto bg-gray-100 border rounded-lg overflow-hidden touch-none select-none"
+              style={{ width: "100%", maxWidth: "720px", aspectRatio: `${opt.width} / ${opt.height}` }}
+              onMouseDown={startDrag}
+              onMouseMove={moveDrag}
+              onMouseUp={endDrag}
+              onMouseLeave={endDrag}
+              onTouchStart={startDrag}
+              onTouchMove={moveDrag}
+              onTouchEnd={endDrag}
+              onWheel={wheelZoom}
+            >
+              {t && (
+                <img
+                  src={t.img.src}
+                  alt="to-crop"
+                  draggable={false}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})`,
+                    transformOrigin: "top left",
+                    width: `${t.natW}px`,
+                    height: `${t.natH}px`,
+                    willChange: "transform",
+                    userSelect: "none",
+                    pointerEvents: "none"
+                  }}
+                />
+              )}
+              <div className="absolute inset-0 ring-1 ring-black/10 pointer-events-none" />
+            </div>
+
+            {cropper.tracks.length > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <button
+                  onClick={() => setCropper(p => ({ ...p, index: Math.max(0, p.index - 1) }))}
+                  disabled={cropper.index === 0}
+                  className={`px-3 py-2 rounded-lg border ${cropper.index===0?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`}
+                >
+                  ◀ Prev
+                </button>
+                <div className="text-sm text-gray-600">Image {cropper.index + 1} of {cropper.tracks.length}</div>
+                <button
+                  onClick={() => setCropper(p => ({ ...p, index: Math.min(p.tracks.length - 1, p.index + 1) }))}
+                  disabled={cropper.index >= cropper.tracks.length - 1}
+                  className={`px-3 py-2 rounded-lg border ${cropper.index>=cropper.tracks.length-1?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`}
+                >
+                  Next ▶
+                </button>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500 mt-3">
+              Tip: drag to position. Use mouse wheel to zoom. Your server receives an exact viewport for {opt.width}×{opt.height}.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 px-5 py-4 border-t">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Cancel</button>
+            <button onClick={downloadAll} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">⬇️ Download Cropped</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Main Page
+========================= */
+export default function ProcessingAdaptive() {
+  /* ---------- core states ---------- */
+  const [files, setFiles] = useState([]);        // original File[] (or Blobs)
+  const [working, setWorking] = useState([]);    // [{ url, blob }] aligned with files (only accepted bg-removed)
+  const [isBusy, setIsBusy] = useState(false);
+  const [status, setStatus] = useState("");
+
+  /* ---------- steps ---------- */
+  const [removeBg, setRemoveBg] = useState(false);
+  const [addShadow, setAddShadow] = useState(false);
+  const [brandKitChoice, setBrandKitChoice] = useState(null);
+  const [brandText, setBrandText] = useState("");
+  const [bgShadowOption, setBgShadowOption] = useState(null);
+
+  /* ---------- smart crop ---------- */
+  const [selectedCrop, setSelectedCrop] = useState(null);
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropper, setCropper] = useState(null);
+  const CROP_OPTIONS = [
+    { id: "amazon", label: "🛒 Amazon",    width: 2000, height: 2000 },
+    { id: "shopee", label: "🛍️ Shopee",    width: 1080, height: 1080 },
+    { id: "igpost", label: "📱 Instagram",  width: 1080, height: 1920 },
+  ];
+
+  /* ---------- NEW: Step 7 (Descriptions) ---------- */
+  const [tone, setTone] = useState("default");
+  const [descs, setDescs] = useState([]);
+  const [descLoading, setDescLoading] = useState([]);
+  const [descError, setDescError] = useState([]);
+
+  const ensureDescArrays = (len) => {
+    setDescs(Array.from({ length: len }, (_, i) => descs[i] || ""));
+    setDescLoading(Array.from({ length: len }, (_, i) => descLoading[i] || false));
+    setDescError(Array.from({ length: len }, (_, i) => descError[i] || ""));
+  };
+
+  const setDescAt = (i, text) =>
+    setDescs((prev) => { const next = prev.slice(); next[i] = text; return next; });
+
+  const setDescLoadingAt = (i, val) =>
+    setDescLoading((prev) => { const next = prev.slice(); next[i] = val; return next; });
+
+  const setDescErrorAt = (i, val) =>
+    setDescError((prev) => { const next = prev.slice(); next[i] = val; return next; });
+
+  async function generateDescFor(index) {
+    if (!files.length) return alert("Please select image(s) first.");
+    if (!allAccepted) return alert("Please Accept background removal for all images before continuing.");
+    ensureDescArrays(files.length);
+    try {
+      setDescErrorAt(index, "");
+      setDescLoadingAt(index, true);
+      const base = (working[index]?.blob) || files[index];
+      const text = await apiGenerateDescription(base, tone);
+      setDescAt(index, text);
+    } catch (e) {
+      setDescErrorAt(index, e?.message || "Generation failed");
+    } finally {
+      setDescLoadingAt(index, false);
+    }
+  }
+
+  async function generateDescForAll() {
+    if (!files.length) return alert("Please select image(s) first.");
+    if (!allAccepted) return alert("Please Accept background removal for all images before continuing.");
+    ensureDescArrays(files.length);
+    await Promise.all(files.map(async (_, i) => {
+      try {
+        setDescErrorAt(i, ""); setDescLoadingAt(i, true);
+        const base = (working[i]?.blob) || files[i];
+        const text = await apiGenerateDescription(base, tone);
+        setDescAt(i, text);
+      } catch (e) {
+        setDescErrorAt(i, e?.message || "Generation failed");
+      } finally {
+        setDescLoadingAt(i, false);
+      }
+    }));
+  }
+
+  const copyCurrentDesc = async (i) => {
+    const t = descs[i] || "";
+    if (!t.trim()) return;
+    try {
+      await navigator.clipboard.writeText(t);
+      setStatus("Copied ✓");
+      setTimeout(() => setStatus(""), 900);
+    } catch {
+      alert("Could not copy. Please select and copy manually.");
+    }
+  };
+
+  /* ---------- platform preview ---------- */
+  const [previewModal, setPreviewModal] = useState({ open: false, platform: null, index: 0 });
+  const openPreview  = (platform) => setPreviewModal({ open: true, platform, index: 0 });
+  const closePreview = () => setPreviewModal({ open: false, platform: null, index: 0 });
+
+  /* ---------- refs ---------- */
+  const inputRef = useRef(null);
+
+  /* ---------- derived ---------- */
+  const isBatch = files.length > 1;
+
+  // Original URLs for display
+  const originalUrls = useMemo(() => files.map(f => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => { originalUrls.forEach(u => URL.revokeObjectURL(u)); }, [originalUrls]);
+
+  // Helper available BEFORE any usage (e.g., openCropper, modal)
+  const displayUrlAt = (i) => (working[i]?.url || originalUrls[i] || null);
+
+  const firstPreview = useMemo(() => {
+    if (!files.length) return null;
+    return displayUrlAt(0);
+  }, [files, working, originalUrls]);
+
+  /* ---------- file picking ---------- */
+  const [replaceIndex, setReplaceIndex] = useState(null);
+
+  const pickFiles = () => inputRef.current?.click();
+
+  const onChangeFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+
+    // Single replace inside modal
+    if (replaceIndex != null && picked.length === 1) {
+      const newFile = picked[0];
+
+      setFiles(prev => { const next = prev.slice(); next[replaceIndex] = newFile; return next; });
+      setWorking(prev => { const next = prev.slice(); if (next[replaceIndex]?.url) URL.revokeObjectURL(next[replaceIndex].url); next[replaceIndex] = undefined; return next; });
+
+      (async () => {
+        try {
+          setBgReview(prev => {
+            const cache = prev.cache.slice();
+            cache[replaceIndex] = { ...(cache[replaceIndex] || {}), loading: true, error: null, url: null, blob: null, accepted: false };
+            return { ...prev, cache };
+          });
+
+          const outBlob = await apiRemoveBg(newFile);
+          const url = URL.createObjectURL(outBlob);
+
+          setBgReview(prev => {
+            const cache = prev.cache.slice();
+            cache[replaceIndex] = { blob: outBlob, url, loading: false, error: null, accepted: false };
+            return { ...prev, cache };
+          });
+        } catch (err) {
+          setBgReview(prev => {
+            const cache = prev.cache.slice();
+            cache[replaceIndex] = { ...(cache[replaceIndex] || {}), loading: false, error: err?.message || "Processing failed", accepted: false };
+            return { ...prev, cache };
+          });
+        } finally {
+          setReplaceIndex(null);
+        }
+      })();
+
+      e.target.value = "";
+      return;
+    }
+
+    // Default: full replace
+    setFiles(picked);
+    // Revoke any working object URLs we created
+    setWorking(prev => { prev?.forEach(x => x?.url && URL.revokeObjectURL(x.url)); return []; });
+    setRemoveBg(false);
+    setAddShadow(false);
+    setBrandKitChoice(null);
+    setSelectedCrop(null);
+    setStatus("");
+    setBgReview({ open: false, index: 0, cache: [] });
+
+    // reset Step 7 caches
+    setDescs([]); setDescLoading([]); setDescError([]);
+    e.target.value = "";
+  };
+
+  /* ---------- REMOVE ONE IMAGE (red X) ---------- */
+  function removeImageAt(idx) {
+    if (idx < 0 || idx >= files.length) return;
+
+    // Revoke any per-item URLs we own
+    const w = working[idx];
+    if (w?.url) URL.revokeObjectURL(w.url);
+
+    // If bg review cache exists, revoke its preview URL too
+    const reviewItem = bgReview.cache?.[idx];
+    if (reviewItem?.url) URL.revokeObjectURL(reviewItem.url);
+
+    // Splice arrays consistently
+    setFiles(prev => prev.filter((_, i) => i !== idx));
+    setWorking(prev => prev.filter((_, i) => i !== idx));
+    setDescs(prev => prev.filter((_, i) => i !== idx));
+    setDescLoading(prev => prev.filter((_, i) => i !== idx));
+    setDescError(prev => prev.filter((_, i) => i !== idx));
+
+    // Adjust active preview index
+    setActiveIndex(prev => {
+      if (prev > idx) return prev - 1;
+      return Math.min(prev, Math.max(0, files.length - 2)); // -2 because one will be removed
+    });
+
+    // If we were replacing this index, cancel replace
+    setReplaceIndex(prev => (prev === idx ? null : (prev != null && prev > idx ? prev - 1 : prev)));
+
+    // If review modal is open, update its cache and index
+    setBgReview(prev => {
+      if (!prev.open) return prev;
+      const nextCache = prev.cache.filter((_, i) => i !== idx);
+      let nextIndex = prev.index;
+      if (prev.index === idx) nextIndex = Math.min(idx, Math.max(0, nextCache.length - 1));
+      else if (prev.index > idx) nextIndex = prev.index - 1;
+      return { ...prev, cache: nextCache, index: nextIndex };
+    });
+  }
+
+  /* ---------- blob helpers ---------- */
+  const getBlobAt = async (i) => working[i]?.blob || files[i];
+  const setWorkingAt = (i, blob) => {
+    const url = URL.createObjectURL(blob);
+    setWorking((prev) => {
+      const next = prev.slice();
+      // revoke existing url in slot if any
+      if (next[i]?.url) URL.revokeObjectURL(next[i].url);
+      next[i] = { url, blob };
+      return next;
+    });
+  };
+
+  /* ---------- all-accepted gate ---------- */
+  const allAccepted = files.length > 0 && files.every((_, i) => Boolean(working[i]?.blob));
+
+  /* ---------- generic runner for single/batch (guarded) ---------- */
+  async function runStep(stepFn) {
+    if (!files.length) return alert("Please select image(s) first.");
+    if (!allAccepted) return alert("Please Accept background removal for all images before continuing.");
+    setIsBusy(true); setStatus("Processing...");
+    try {
+      if (files.length === 1) {
+        const out = await stepFn(await getBlobAt(0));
+        setWorkingAt(0, out);
+      } else {
+        await Promise.all(files.map(async (_, i) => {
+          const out = await stepFn(await getBlobAt(i));
+          setWorkingAt(i, out);
+        }));
+      }
+      setStatus("Done ✓");
+    } catch (e) {
+      console.error(e); setStatus("Failed");
+    } finally {
+      setIsBusy(false);
+      setTimeout(() => setStatus(""), 900);
+    }
+  }
+
+  /* ---------- step actions (shadow/brand) ---------- */
+  const onAddShadow = async () => {
+    if (!files.length) return alert("Please select image(s) first.");
+    setAddShadow(true);
+    await runStep(apiAddShadow);
+  };
+  const onNoShadow = () => setAddShadow(false);
+  const onCreateBrandKit = async () => {
+    if (!brandText.trim()) return alert("Describe your brand style first.");
+    setBrandKitChoice("create");
+    await runStep((blob) => apiApplyBrand(blob, brandText.trim()));
+  };
+  const onSkipBrandKit = () => setBrandKitChoice("skip");
+
+  /* ---------- downloads ---------- */
+  const downloadAll = () => {
+    if (!files.length) return;
+    const save = (blob, name) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    if (files.length === 1) {
+      const entry = working[0];
+      save(entry?.blob || files[0], entry ? "processed.png" : (files[0].name || "original.png"));
+    } else {
+      files.forEach((f, i) => {
+        const entry = working[i];
+        save(entry?.blob || f, entry ? `processed_${i + 1}.png` : (f.name || `original_${i + 1}.png`));
+      });
+    }
+  };
+
+  async function downloadCropped() {
+    if (!selectedCrop) return alert("Choose a crop option first.");
+    if (!files.length) return alert("Pick image(s) first.");
+    if (!allAccepted) return alert("Finish Step 1 (Accept all) first.");
+    const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
+    setIsCropping(true);
+    try {
+      if (files.length > 1) {
+        await Promise.all(files.map(async (_, i) => {
+          const base = working[i]?.blob || files[i];
+          const out  = await apiCrop(base, opt);
+          const url  = URL.createObjectURL(out);
+          const a = document.createElement("a");
+          a.href = url; a.download = `cropped_${i + 1}_${opt.id}.png`; a.click();
+          URL.revokeObjectURL(url);
+        }));
+      } else {
+        const base = working[0]?.blob || files[0];
+        const out  = await apiCrop(base, opt);
+        const url  = URL.createObjectURL(out);
+        const a = document.createElement("a");
+        a.href = url; a.download = `cropped_${opt.id}.png`; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setIsCropping(false);
+    }
+  }
+
+  /* --- Manual crop: open & prepare tracks --- */
+  const openCropper = async () => {
+    if (!selectedCrop) return alert("Choose a crop option first.");
+    if (!files.length) return alert("Pick image(s) first.");
+    if (!allAccepted) return alert("Finish Step 1 (Accept all) first.");
+    const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
+    const urls = files.map((_, i) => displayUrlAt(i));
+    const imgs = await Promise.all(urls.map(loadImage));
+    const tracks = await Promise.all(imgs.map(async (img, i) => ({
+      x: 0, y: 0, scale: 1,
+      natW: img.naturalWidth, natH: img.naturalHeight,
+      img,
+      baseBlob: working[i]?.blob || files[i]
+    })));
+    setCropper({ open: true, index: 0, optId: opt.id, tracks, dragging: false, last: { x: 0, y: 0 } });
+  };
+
+  /* ======================================================
+     STEP 1: Background Removal — Review Modal
+  ======================================================= */
+  const [bgReview, setBgReview] = useState({
+    open: false,
+    index: 0,
+    cache: [], // [{ url, blob, loading, error, accepted }]
+  });
+
+  function findNextUnaccepted(cache, from = 0) {
+    for (let i = from; i < cache.length; i++) {
+      if (!cache[i]?.accepted) return i;
+    }
+    return -1;
+  }
+
+  async function openRemoveBgReview() {
+    if (!files.length) return alert("Please select image(s) first.");
+    setStatus("Removing backgrounds...");
+
+    const results = await Promise.all(files.map(async (_, i) => {
+      try {
+        const base = files[i];
+        const outBlob = await apiRemoveBg(base);
+        const url = URL.createObjectURL(outBlob);
+        return { blob: outBlob, url, loading: false, error: null, accepted: false };
+      } catch (e) {
+        return { blob: null, url: null, loading: false, error: e?.message || "Processing failed", accepted: false };
+      }
+    }));
+
+    setBgReview({ open: true, index: 0, cache: results });
+    setStatus("Done ✓"); setTimeout(() => setStatus(""), 900);
+  }
+
+  function cancelBgReview() {
+    setBgReview(prev => {
+      prev.cache?.forEach(entry => entry?.url && URL.revokeObjectURL(entry.url));
+      return { open: false, index: 0, cache: [] };
+    });
+    setWorking([]);        // discard accepted outputs
+    setRemoveBg(false);    // step 1 is undone
+    setStatus("Background review canceled — changes discarded");
+    setTimeout(() => setStatus(""), 1200);
+  }
+
+  function finishBgReview() {
+    setBgReview(prev => {
+      prev.cache?.forEach(entry => entry?.url && URL.revokeObjectURL(entry.url));
+      return { open: false, index: 0, cache: [] };
+    });
+    setStatus("All images accepted ✓");
+    setTimeout(() => setStatus(""), 900);
+  }
+
+  function acceptCurrentBg() {
+    const i = bgReview.index;
+    const entry = bgReview.cache[i];
+    if (!entry?.blob) return;
+
+    setBgReview(prev => {
+      const cache = prev.cache.slice();
+      cache[i] = { ...cache[i], accepted: true };
+      return { ...prev, cache };
+    });
+
+    setWorkingAt(i, entry.blob);
+    setRemoveBg(true);
+
+    setBgReview(prev => {
+      const nextIdx = findNextUnaccepted(prev.cache, i + 1);
+      if (nextIdx === -1) {
+        queueMicrotask(() => finishBgReview());
+        return prev;
+      }
+      return { ...prev, index: nextIdx };
+    });
+  }
+
+  const tryAgainCurrentBg = async () => {
+    const i = bgReview.index;
+
+    setBgReview(prev => {
+      const cache = prev.cache.slice();
+      cache[i] = { ...(cache[i] || {}), loading: true, error: null, accepted: false };
+      return { ...prev, cache };
+    });
+    setWorking(prev => { const next = prev.slice(); if (next[i]?.url) URL.revokeObjectURL(next[i].url); next[i] = undefined; return next; });
+
+    try {
+      const base = files[i];
+      const outBlob = await apiRemoveBg(base);
+      const url = URL.createObjectURL(outBlob);
+
+      setBgReview(prev => {
+        const cache = prev.cache.slice();
+        const old = cache[i];
+        if (old?.url && old.url !== url) URL.revokeObjectURL(old.url);
+        cache[i] = { blob: outBlob, url, loading: false, error: null, accepted: false };
+        return { ...prev, cache };
+      });
+    } catch (e) {
+      setBgReview(prev => {
+        const cache = prev.cache.slice();
+        cache[i] = { ...(cache[i] || {}), loading: false, error: e?.message || "Processing failed", accepted: false };
+        return { ...prev, cache };
+      });
+    }
+  };
+
+  function retakeOrChangePhoto() {
+    setReplaceIndex(bgReview.index);
+    inputRef.current?.click();
+  }
+
+  const gotoPrevReview = () => {
+    setBgReview(prev => {
+      let j = prev.index - 1;
+      while (j >= 0 && prev.cache[j]?.accepted) j--;
+      return { ...prev, index: Math.max(0, j >= 0 ? j : 0) };
+    });
+  };
+  const gotoNextReview = () => {
+    setBgReview(prev => {
+      let j = prev.index + 1;
+      while (j < files.length && prev.cache[j]?.accepted) j++;
+      return { ...prev, index: Math.min(files.length - 1, j) };
+    });
+  };
+
+  /* ===========================
+     Gallery helpers for Step 4
+  ============================ */
+  const [activeIndex, setActiveIndex] = useState(0);
+  useEffect(() => { setActiveIndex(0); }, [files.length]);
+
+  const downloadOne = (i) => {
+    const entry = working[i];
+    const blob = entry?.blob || files[i];
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = entry ? `processed_${i + 1}.png` : (files[i].name || `image_${i + 1}.png`);
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /* ---------- UI ---------- */
+  return (
     <div className="min-h-screen bg-[#f6f7fb] text-gray-900">
-      {/* Top nav (light) */}
+      {/* Header */}
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">📷</div>
             <Link to="/" className="font-semibold tracking-tight">PhotoPro</Link>
           </div>
-          <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600">
-            <Link className="hover:text-gray-900" to="/">Home</Link>
-
-            <span className="font-medium text-gray-900">Single Processing</span>
-            <Link  to="/batch-processing" className="hover:text-gray-900">
-                          Batch Processing
-            </Link>
-          </nav>
-          
+          <div className="text-xs text-gray-500">{status}</div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-10">
         <h1 className="text-2xl md:text-3xl font-extrabold text-center mb-8">
-          Single Photo Processing
+          {isBatch ? `Batch Processing (${files.length})` : "Photo Processing"}
         </h1>
 
-        {/* Drop area / file info */}
+        {/* Upload Section */}
         <section className="rounded-2xl border-2 border-dashed border-blue-300 bg-white p-6 md:p-8 mb-8">
-          <div className="text-center mb-4">
-            {file ? (
-              <>
-                <div className="text-3xl mb-2">✅</div>
-                <div className="font-semibold">File Selected</div>
-                <div className="text-sm text-gray-500 truncate max-w-full">
-                  {file.name}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-3xl mb-2">⬆️</div>
-                <div className="font-semibold mb-1">No file selected</div>
-                <div className="text-sm text-gray-500">Choose a product image to start</div>
-              </>
-            )}
-          </div>
+          {isBatch ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {files.map((f, i) => {
+                const src = displayUrlAt(i);
+                return (
+                  <div key={i} className="relative rounded-lg bg-gray-50 border h-44 md:h-48 flex items-center justify-center p-2">
+                    {/* Image */}
+                    <img src={src} alt={`p${i}`} className="w-full h-full object-contain" />
+                    {/* Small red round X */}
+                    <button
+                      type="button"
+                      onClick={() => removeImageAt(i)}
+                      className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:bg-red-700"
+                      title="Remove this photo"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="relative rounded-lg bg-gray-50 border h-56 md:h-64 flex items-center justify-center mb-4 p-2">
+              {firstPreview
+                ? <img src={firstPreview} alt="preview" className="w-full h-full object-contain" />
+                : <span className="text-gray-500">Image Preview</span>}
+              {/* For single-file mode, allow delete too */}
+              {files.length === 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeImageAt(0)}
+                  className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:bg-red-700"
+                  title="Remove this photo"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
 
-          <div className="h-40 md:h-44 bg-gray-200/60 rounded-lg flex items-center justify-center text-gray-500">
-            {previewURL ? (
-              <img
-                src={previewURL}
-                alt="preview"
-                className="h-full object-contain"
-              />
-            ) : (
-              "Image Preview"
-            )}
-          </div>
-
-          <div className="mt-5 flex items-center justify-center">
+          <div className="text-center">
             <button
-              onClick={onPick}
+              onClick={pickFiles}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:bg-blue-700"
             >
-              {file ? "Change File" : "Select File"}
+              {files.length ? "Change File(s)" : "Select File(s)"}
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={onChangeFile}
-              className="hidden"
-            />
+            <input ref={inputRef} type="file" accept="image/*" multiple onChange={onChangeFiles} className="hidden" />
+            {files.length > 0 && (
+              <div className="mt-2 text-xs text-gray-500">
+                Selected {files.length} file{files.length > 1 ? "s" : ""}
+              </div>
+            )}
           </div>
         </section>
 
         {/* Step 1: Background Removal */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b">
-            <div className="font-semibold">Step 1: Background Removal</div>
-            <p className="text-sm text-gray-600 mt-1">
-              Would you like to remove the background from your image?
-            </p>
+        <section className="bg-white rounded-2xl shadow-sm border mb-8 overflow-hidden">
+          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-2">
+            <span className="text-xl">🧼</span>
+            <div>
+              <div className="font-semibold text-gray-800">Step 1: Background Removal</div>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Review each image. Accept to keep it. Try Again to reprocess. Retake to upload a replacement.
+                Closing with ✖️ discards all progress.
+              </p>
+            </div>
           </div>
-
-          <div className="p-5 md:p-6">
+          <div className="p-6 md:p-8 flex flex-col items-center justify-center">
             <button
-              onClick={() => setRemoveBg((prev) => !prev)}   // toggle state
-              className={`w-full rounded-xl border p-6 md:p-7 text-center transition-all duration-300 shadow-sm hover:shadow-md
-                flex flex-col items-center justify-center min-h-[120px]
-                ${removeBg ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
+              onClick={openRemoveBgReview}
+              disabled={!files.length}
+              className={`relative group w-full max-w-sm rounded-2xl px-8 py-10 border-2 transition-all duration-300
+                flex flex-col items-center justify-center font-semibold text-lg shadow-sm hover:shadow-lg active:scale-[0.98]
+                ${!files.length ? "opacity-60 cursor-not-allowed bg-gray-100 text-gray-400"
+                                 : "bg-gradient-to-br from-white to-gray-50 text-gray-700 hover:from-blue-50 hover:to-indigo-50 hover:text-indigo-700 border-blue-200"}`}
             >
-              <div className="text-3xl mb-2">{removeBg ? "✅" : "⬜️"}</div>
-              <div className="font-medium">
-                {removeBg ? "Background Will Be Removed" : "Click to Remove Background"}
-              </div>
+              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform duration-300">🪄</div>
+              <span>Remove Backgrounds</span>
             </button>
+            {!files.length && <p className="mt-4 text-sm text-gray-500 italic">Please upload one or more images first.</p>}
           </div>
         </section>
 
-
-        {/* Step 2: Shadow Effects */}
+        {/* Step 2 + 3 */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b">
-            <div className="font-semibold">Step 2: Shadow Effects</div>
-            <p className="text-sm text-gray-600 mt-1">
-              Would you like to add shadow effects to your image?
-            </p>
+          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-indigo-50 to-blue-50">
+            <div className="font-semibold text-gray-800">Step 2 + 3: Background Generation + Shadow Options</div>
+            <p className="text-sm text-gray-600 mt-1">Choose how you want to combine background generation and shadow style.</p>
+            {!allAccepted && files.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Finish Step 1 (Accept all) to enable this step.
+              </p>
+            )}
           </div>
 
           <div className="p-5 md:p-6 grid md:grid-cols-2 gap-4">
             <button
-              onClick={() => setAddShadow(true)}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md ${
-                addShadow ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"
-              }`}
+              onClick={() => setBgShadowOption("shadow-text")}
+              disabled={!files.length || isBusy || !allAccepted}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
+                ${bgShadowOption === "shadow-text" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
-              <div className="text-3xl mb-2">✨</div>
-              <div className="font-medium">Add Shadow</div>
+              <div className="text-3xl mb-2">🌤️</div>
+              <div className="font-medium">Shadow + New Background Based on Text</div>
             </button>
 
             <button
-              onClick={() => setAddShadow(false)}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md ${
-                !addShadow ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"
-              }`}
-            >
-              <div className="text-3xl mb-2">🚫</div>
-              <div className="font-medium">No Shadow</div>
-            </button>
-          </div>
-        </section>
-        
-
-        
-        {/* Step 3: Brand Kit */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b">
-            <div className="font-semibold">Step 3: Brand Kit Setup</div>
-            <p className="text-sm text-gray-600 mt-1">
-              Would you like to create a brand kit based on text description?
-            </p>
-          </div>
-
-          <div className="p-5 md:p-6 grid md:grid-cols-2 gap-4">
-            {/* Create Brand Kit Button */}
-            <button
-              onClick={() => setBrandKitChoice("create")}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md 
-                ${brandKitChoice === "create" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
+              onClick={() => setBgShadowOption("no-shadow-text")}
+              disabled={!files.length || isBusy || !allAccepted}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
+                ${bgShadowOption === "no-shadow-text" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">🎨</div>
-              <div className="font-medium">Create Brand Kit</div>
+              <div className="font-medium">No Shadow + New Background Based on Text</div>
             </button>
 
-            {/* Skip Brand Kit Button */}
             <button
-              onClick={() => setBrandKitChoice("skip")}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md 
-                ${brandKitChoice === "skip" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"}`}
+              onClick={async () => {
+                setBgShadowOption("shadow-white");
+                setAddShadow(true);
+                await runStep(apiAddShadow);
+                setBrandKitChoice("white");
+              }}
+              disabled={!files.length || isBusy || !allAccepted}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
+                ${bgShadowOption === "shadow-white" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
+            >
+              <div className="text-3xl mb-2">⚪️</div>
+              <div className="font-medium">Shadow + White Background</div>
+            </button>
+
+            <button
+              onClick={() => {
+                setBgShadowOption("skip");
+                setAddShadow(false);
+                setBrandKitChoice("skip");
+              }}
+              disabled={!files.length || isBusy || !allAccepted}
+              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
+                ${bgShadowOption === "skip" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">⏭️</div>
-              <div className="font-medium">Skip Brand Kit</div>
+              <div className="font-medium">Skip</div>
             </button>
           </div>
+        </section>
 
-          {/* Only show input if Create is selected */}
-          {brandKitChoice === "create" && (
-            <div className="px-5 md:px-6 pb-6">
+        {/* Text-based background popup */}
+        {(bgShadowOption === "shadow-text" || bgShadowOption === "no-shadow-text") && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setBgShadowOption(null)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6">
+              <h2 className="text-xl font-semibold mb-3">Describe Your Desired Background</h2>
+              <p className="text-sm text-gray-600 mb-4">Example: “minimalist wooden tabletop”, “bright pastel room”, “dark studio lighting”</p>
               <input
                 type="text"
                 value={brandText}
                 onChange={(e) => setBrandText(e.target.value)}
-                placeholder="Describe your brand style (e.g., modern, minimalist, luxury, vibrant)"
-                className="w-full rounded-lg border px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your background style..."
+                className="w-full border rounded-lg px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setBgShadowOption(null)} className="px-4 py-2 rounded-lg border hover:bg-gray-50">Cancel</button>
+                <button
+                  onClick={async () => {
+                    if (!brandText.trim()) return alert("Please describe your background first.");
+                    if (bgShadowOption === "shadow-text") {
+                      setAddShadow(true);
+                      await runStep(apiAddShadow);
+                    } else {
+                      setAddShadow(false);
+                    }
+                    await runStep((blob) => apiApplyBrand(blob, brandText.trim()));
+                    setBrandKitChoice("create");
+                    setBgShadowOption(null);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                >
+                  Generate
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Processing / Download (gallery) */}
+        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+          <div className="p-5 md:p-6">
+            <div className="font-semibold">Step 4: Processing your image{isBatch ? "s" : ""}!</div>
+            {isBatch && files.length > 0 && (
+              <p className="text-sm text-gray-600 mt-1">Click a thumbnail below to preview another image.</p>
+            )}
+          </div>
+
+          <div className="px-5 md:px-6">
+            <div className="rounded-lg bg-gray-50 border h-64 md:h-80 flex items-center justify-center overflow-hidden p-2">
+              {files.length ? (
+                displayUrlAt(activeIndex) ? (
+                  <img src={displayUrlAt(activeIndex)} alt={`result_${activeIndex + 1}`} className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-gray-500">Preparing preview…</span>
+                )
+              ) : (
+                <span className="text-gray-500">AI-Enhanced Image</span>
+              )}
+            </div>
+          </div>
+
+          {isBatch && files.length > 0 && (
+            <div className="px-5 md:px-6 mt-3">
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {files.map((_, i) => {
+                  const url = displayUrlAt(i);
+                  const processed = Boolean(working[i]);
+                  const selected = i === activeIndex;
+
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveIndex(i)}
+                      className="shrink-0"
+                      title={processed ? "Processed" : "Original"}
+                    >
+                      <div
+                        className={[
+                          "relative h-20 w-20 md:h-24 md:w-24 rounded-lg",
+                          "border border-black/70 bg-white overflow-hidden",
+                          selected ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-white" : "hover:shadow-sm"
+                        ].join(" ")}
+                      >
+                        {url ? (
+                          <img
+                            src={url}
+                            alt={`thumb_${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="absolute inset-0 grid place-items-center text-xs text-gray-400">…</span>
+                        )}
+
+                        {/* Delete button on thumbnails too (optional here) */}
+                        <span
+                          className={[
+                            "absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded",
+                            processed ? "bg-emerald-600 text-white" : "bg-gray-300 text-gray-700"
+                          ].join(" ")}
+                        >
+                          {processed ? "Processed" : "Original"}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
-        </section>
 
+          <div className="px-5 md:px-6 py-5 flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => downloadOne(activeIndex)}
+              disabled={!files.length || isBusy}
+              className="w-full sm:w-auto px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow disabled:opacity-60"
+            >
+              ⬇️ Download This
+            </button>
 
-
-        {/* Processing Complete / Variants */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 flex items-center justify-between">
-            <div className="font-semibold">Step 4: Processing your image!</div>
-          </div>
-
-          <div className="px-5 md:px-6 pb-6 grid md:grid-cols-3 gap-4">
-            
-            {variantBtn("", "AI-Enhanced Image")}
-            
-          </div>
-
-          <div className="px-5 md:px-6 pb-6">
-            <button className="w-full md:w-auto px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow">
-              ⬇️ Download Image
+            <button
+              onClick={downloadAll}
+              disabled={!files.length || isBusy}
+              className="w-full sm:w-auto px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow disabled:opacity-60"
+            >
+              ⬇️ {isBatch ? "Download All" : "Download Image"}
             </button>
           </div>
         </section>
 
-        {/* Smart Crop */}
+        {/* Step 5: Smart Crop */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6">
             <div className="font-semibold">
-              Step 5: Smart Crop for Platforms{" "}
-              <span className="text-gray-400 text-sm">(Optional)</span>
+              Step 5: Smart Crop for Platforms <span className="text-gray-400 text-sm">(Optional)</span>
             </div>
             <p className="text-sm text-gray-600 mt-1">
-              Want to optimize for specific platforms? Choose a crop format below and download the cropped version.
+              Pick a preset, then either bulk-export or open the manual cropper to drag & center each image.
             </p>
+            {!allAccepted && files.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Finish Step 1 (Accept all) to enable this step.
+              </p>
+            )}
           </div>
 
-          <div className="px-5 md:px-6 pb-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="px-5 md:px-6 pb-4 grid grid-cols-2 md:grid-cols-3 gap-4">
             {CROP_OPTIONS.map(opt => {
               const active = selectedCrop === opt.id;
               return (
                 <button
                   key={opt.id}
-                  type="button"
                   onClick={() => setSelectedCrop(opt.id)}
                   className={`rounded-xl border p-4 text-center transition shadow-sm hover:shadow-md
                     ${active ? "ring-2 ring-violet-500 bg-violet-50" : "bg-white"}`}
@@ -297,67 +1069,62 @@ function downloadCropped() {
             })}
           </div>
 
-          <div className="px-5 md:px-6 pb-6">
+          <div className="px-5 md:px-6 pb-6 flex flex-col sm:flex-row gap-3">
             <button
               onClick={downloadCropped}
-              disabled={!selectedCrop}
+              disabled={!selectedCrop || !files.length || isCropping || !allAccepted}
               className={`px-4 py-2 rounded-lg font-medium shadow
-                ${!selectedCrop
-                  ? "bg-emerald-300 cursor-not-allowed text-white/80"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
+                ${(!selectedCrop || !files.length || isCropping || !allAccepted) ? "bg-emerald-300 cursor-not-allowed text-white/80"
+                                                                                  : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
             >
-              ⬇️ Download Cropped
+              {isCropping ? "Cropping..." : "⬇️ Download Cropped (Auto)"}
+            </button>
+
+            <button
+              onClick={openCropper}
+              disabled={!selectedCrop || !files.length || !allAccepted}
+              className={`px-4 py-2 rounded-lg font-medium shadow
+                ${(!selectedCrop || !files.length || !allAccepted) ? "bg-indigo-300 cursor-not-allowed text-white/80"
+                                                                   : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+            >
+              ✂️ Open Manual Cropper
             </button>
           </div>
         </section>
 
-
-        {/* Step 7: Platform Preview */}
+        {/* Step 6: Platform Preview */}
         <section className="bg-white rounded-2xl shadow-sm border mb-8">
           <div className="p-5 md:p-6">
             <div className="font-semibold mb-3">🛍 Step 6: Platform Preview</div>
-            <p className="text-sm text-gray-600 mb-4">
-              See how your processed image could look on different platforms. Click to preview.
-            </p>
+            <p className="text-sm text-gray-600 mb-4">See how your processed image could look on different platforms. Click to preview.</p>
+            {!allAccepted && files.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 -mt-2 mb-2 inline-block">
+                Finish Step 1 (Accept all) to enable this step.
+              </p>
+            )}
 
-            {/* Clickable cards */}
             <div className="grid md:grid-cols-3 gap-5">
-              {/* Amazon */}
-              <button
-                onClick={() => openPreview("amazon")}
-                className="group rounded-2xl border hover:border-blue-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
-              >
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
-                  🛒
-                </div>
+              <button onClick={() => allAccepted && openPreview("amazon")} disabled={!allAccepted}
+                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-blue-400"}`}>
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">🛒</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Amazon</div>
                   <div className="text-xs text-gray-500">Product listing layout</div>
                 </div>
               </button>
 
-              {/* Shopee */}
-              <button
-                onClick={() => openPreview("shopee")}
-                className="group rounded-2xl border hover:border-orange-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
-              >
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
-                  🛍️
-                </div>
+              <button onClick={() => allAccepted && openPreview("shopee")} disabled={!allAccepted}
+                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-orange-400"}`}>
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">🛍️</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Shopee</div>
                   <div className="text-xs text-gray-500">Mobile-first design</div>
                 </div>
               </button>
 
-              {/* Instagram */}
-              <button
-                onClick={() => openPreview("instagram")}
-                className="group rounded-2xl border hover:border-pink-400 transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left"
-              >
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">
-                  📸
-                </div>
+              <button onClick={() => allAccepted && openPreview("instagram")} disabled={!allAccepted}
+                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-pink-400"}`}>
+                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">📸</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Instagram</div>
                   <div className="text-xs text-gray-500">Social media posts</div>
@@ -367,173 +1134,354 @@ function downloadCropped() {
           </div>
         </section>
 
-          {/* Platform Preview Modal */}
-          {previewModal.open && (
-            <div className="fixed inset-0 z-[100]">
-              {/* overlay */}
-              <div
-                className="absolute inset-0 bg-black/50"
-                onClick={closePreview}
-                aria-hidden
-              />
+        {/* 🆕 Step 7: AI Product Description */}
+        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-violet-50 to-fuchsia-50">
+            <div className="font-semibold">Step 7: AI Product Description</div>
+            <p className="text-sm text-gray-600 mt-1">
+              Generate SEO-friendly, tone-controlled descriptions from your final image.
+            </p>
+            {!allAccepted && files.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Finish Step 1 (Accept all) to enable this step.
+              </p>
+            )}
+          </div>
 
-              {/* centered dialog */}
-              <div className="relative z-[101] h-full w-full grid place-items-center p-4">
-                <div className="
-                    relative w-full 
-                    max-w-xl md:max-w-3xl      /* smaller panel */
-                    bg-white rounded-2xl shadow-2xl overflow-hidden
-                    max-h-[90vh]              /* never grows taller than viewport */
-                  ">
-                  {/* header */}
-                  <div className="flex items-center justify-between px-5 py-4 border-b">
-                    <div className="font-semibold">
-                      {previewModal.platform === "amazon"    && "Amazon Listing Preview"}
-                      {previewModal.platform === "shopee"    && "Shopee Product Preview"}
-                      {previewModal.platform === "instagram" && "Instagram Post Preview"}
-                    </div>
+          <div className="px-5 md:px-6 py-5 grid md:grid-cols-[1fr_1.2fr] gap-5">
+            {/* Left: image + controls */}
+            <div>
+              <div className="rounded-lg bg-gray-50 border h-56 md:h-64 flex items-center justify-center overflow-hidden p-2">
+                {files.length ? (
+                  displayUrlAt(activeIndex) ? (
+                    <img src={displayUrlAt(activeIndex)} alt={`desc_${activeIndex+1}`} className="w-full h-full object-contain" />
+                  ) : <span className="text-gray-500">Preparing preview…</span>
+                ) : (
+                  <span className="text-gray-500">Upload an image to generate text</span>
+                )}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <select
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2"
+                  disabled={!files.length || !allAccepted}
+                >
+                  <option value="default">Tone: Default</option>
+                  <option value="luxury">Tone: Luxury</option>
+                  <option value="minimal">Tone: Minimal</option>
+                  <option value="playful">Tone: Playful</option>
+                  <option value="tech">Tone: Tech</option>
+                </select>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => generateDescFor(activeIndex)}
+                    disabled={!files.length || descLoading[activeIndex] || !allAccepted}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading[activeIndex] || !allAccepted) ? "bg-indigo-300 cursor-not-allowed text-white/80" : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+                  >
+                    {descs[activeIndex] ? "🔁 Regenerate" : "✨ Generate"}
+                  </button>
+                  {isBatch && (
                     <button
-                      onClick={closePreview}
-                      className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100"
-                      aria-label="Close"
+                      onClick={generateDescForAll}
+                      disabled={!files.length || descLoading.some(Boolean) || !allAccepted}
+                      className={`px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading.some(Boolean) || !allAccepted) ? "bg-blue-300 cursor-not-allowed text-white/80" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
                     >
-                      ✖️
+                      ✨ All
                     </button>
-                  </div>
-
-                  {/* body */}
-                  <div className="p-5 md:p-6">
-                    {/* AMAZON */}
-                    {previewModal.platform === "amazon" && (
-                      <div className="grid md:grid-cols-2 gap-6">
-                        {/* fixed square preview area */}
-                        <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden">
-                          {previewImg ? (
-                            <img
-                              src={previewImg}
-                              alt="preview"
-                              className="w-full h-full object-contain"  /* key line */
-                            />
-                          ) : (
-                            <div className="w-full h-full grid place-items-center text-5xl">✨</div>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                          <h3 className="text-xl font-semibold text-blue-700">
-                            Premium Product – AI Enhanced
-                          </h3>
-                          <div className="text-2xl font-bold">$29.99</div>
-                          <div className="text-green-600 text-sm">✅ In Stock</div>
-                          <div className="text-xs text-gray-500">
-                            FREE delivery tomorrow if you order within 4 hrs 23 mins
-                          </div>
-
-                          <div className="mt-2 flex flex-col gap-3">
-                            <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">
-                              Add to Cart
-                            </button>
-                            <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">
-                              Buy Now
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* SHOPEE */}
-                    {previewModal.platform === "shopee" && (
-                      <div className="rounded-xl border overflow-hidden">
-                        {/* fixed 16:10 area */}
-                        <div className="aspect-[16/10] bg-gray-100">
-                          {previewImg ? (
-                            <img
-                              src={previewImg}
-                              alt="preview"
-                              className="w-full h-full object-contain"
-                            />
-                          ) : (
-                            <div className="w-full h-full grid place-items-center text-5xl">✨</div>
-                          )}
-                        </div>
-
-                        <div className="p-4 md:p-5 bg-white">
-                          <div className="font-medium">Premium Product – AI Enhanced</div>
-                          <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                            ⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span>
-                          </div>
-
-                          <div className="mt-4 grid md:grid-cols-2 gap-3">
-                            <button className="rounded-lg border py-2.5 hover:bg-gray-50">
-                              Add to Cart
-                            </button>
-                            <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">
-                              Buy Now
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* INSTAGRAM */}
-                    {previewModal.platform === "instagram" && (
-                      <div
-                        className="rounded-2xl overflow-hidden"
-                        style={{ background: "linear-gradient(135deg, #f99 0%, #f09 30%, #90f 70%, #69f 100%)" }}
-                      >
-                        <div className="max-w-sm w-full mx-auto my-6 bg-white/90 rounded-xl overflow-hidden shadow-xl">
-                          {/* header */}
-                          <div className="flex items-center gap-2 px-4 py-3 border-b">
-                            <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
-                            <div className="text-sm font-medium">your_brand</div>
-                          </div>
-
-                          {/* fixed 4:5 image area */}
-                          <div className="w-full aspect-[4/5] bg-gray-100">
-                            {previewImg ? (
-                              <img
-                                src={previewImg}
-                                alt="preview"
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <div className="w-full h-full grid place-items-center text-5xl">✨</div>
-                            )}
-                          </div>
-
-                          {/* actions */}
-                          <div className="px-4 pt-3 pb-4">
-                            <div className="flex items-center gap-4 text-xl mb-2">❤️ 💬 📨</div>
-                            <div className="text-sm">
-                              <span className="font-semibold">your_brand</span>{" "}
-                              Check out our latest product! AI-enhanced and ready to shine ✨ #product #ai #enhanced
-                            </div>
-                            <div className="mt-3">
-                              <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">
-                                Shop Now
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* footer */}
-                  <div className="flex justify-end px-5 py-4 border-t">
-                    <button
-                      onClick={closePreview}
-                      className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50"
-                    >
-                      Close
-                    </button>
-                  </div>
+                  )}
                 </div>
               </div>
+
+              {isBatch && files.length > 0 && (
+                <div className="mt-4 flex gap-2 overflow-x-auto">
+                  {files.map((_, i) => {
+                    const url = displayUrlAt(i);
+                    const selected = i === activeIndex;
+                    const hasDesc = !!descs[i];
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setActiveIndex(i)}
+                        className="shrink-0"
+                        title={hasDesc ? "Description ready" : "No description yet"}
+                      >
+                        <div
+                          className={[
+                            "relative h-16 w-16 rounded-lg",
+                            "border border-black/70 bg-white overflow-hidden",
+                            selected ? "ring-2 ring-fuchsia-500 ring-offset-2 ring-offset-white" : "hover:shadow-sm"
+                          ].join(" ")}
+                        >
+                          {url ? <img src={url} alt={`mini_${i+1}`} className="w-full h-full object-cover" /> : null}
+                          <span className={[
+                            "absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded",
+                            hasDesc ? "bg-emerald-600 text-white" : "bg-gray-300 text-gray-700"
+                          ].join(" ")}>
+                            {hasDesc ? "Ready" : "Empty"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Right: output editor */}
+            <div className="flex flex-col">
+              <label className="text-sm text-gray-600 mb-1">Generated Description</label>
+              <div className="relative">
+                <textarea
+                  value={descs[activeIndex] || ""}
+                  onChange={(e) => setDescAt(activeIndex, e.target.value)}
+                  placeholder={descLoading[activeIndex] ? "Generating…" : "Click Generate to create a product description..."}
+                  className="w-full min-h-[220px] rounded-lg border px-3 py-3 focus:ring-2 focus:ring-fuchsia-500 outline-none"
+                  disabled={!allAccepted}
+                />
+                {descLoading[activeIndex] && (
+                  <div className="absolute inset-0 grid place-items-center bg-white/70 rounded-lg">
+                    <div className="animate-pulse text-gray-600">✨ Thinking…</div>
+                  </div>
+                )}
+              </div>
+
+              {descError[activeIndex] && (
+                <div className="mt-2 text-sm text-red-600">{descError[activeIndex]}</div>
+              )}
+
+              <div className="mt-3 flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => copyCurrentDesc(activeIndex)}
+                  disabled={!descs[activeIndex] || !allAccepted}
+                  className={`px-4 py-2 rounded-lg font-medium border ${(descs[activeIndex] && allAccepted) ? "bg-white hover:bg-gray-50" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}
+                >
+                  📋 Copy
+                </button>
+
+                <button
+                  onClick={() => generateDescFor(activeIndex)}
+                  disabled={!files.length || descLoading[activeIndex] || !allAccepted}
+                  className={`px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading[activeIndex] || !allAccepted) ? "bg-violet-300 cursor-not-allowed text-white/80" : "bg-violet-600 hover:bg-violet-700 text-white"}`}
+                >
+                  🔁 Regenerate
+                </button>
+              </div>
+
+              <p className="mt-3 text-xs text-gray-500">
+                Tip: Edit the text directly to fine-tune keywords or add dimensions, SKU, or warranty info before copying.
+              </p>
+            </div>
+          </div>
+        </section>
       </main>
+
+      {/* Platform Preview Modal */}
+      {previewModal.open && (
+        <div className="fixed inset-0 z-[100]">
+          <div className="absolute inset-0 bg-black/50" onClick={closePreview} aria-hidden />
+          <div className="relative z-[101] h-full w-full grid place-items-center p-4">
+            <div className="relative w-full max-w-xl md:max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh]">
+              <div className="flex items-center justify-between px-5 py-4 border-b">
+                <div className="font-semibold">
+                  {previewModal.platform === "amazon"    && "Amazon Listing Preview"}
+                  {previewModal.platform === "shopee"    && "Shopee Product Preview"}
+                  {previewModal.platform === "instagram" && "Instagram Post Preview"}
+                </div>
+                <button onClick={closePreview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+              </div>
+
+              <div className="p-5 md:p-6">
+                {(() => {
+                  const currentUrl = files.length ? displayUrlAt(previewModal.index) : null;
+
+                  const ArrowControls = () => {
+                    if (files.length <= 1) return null;
+                    const canPrev = previewModal.index > 0;
+                    const canNext = previewModal.index < files.length - 1;
+                    return (
+                      <div className="flex items-center justify-between gap-3 mt-3">
+                        <button
+                          onClick={() => setPreviewModal(p => ({ ...p, index: Math.max(0, p.index - 1) }))}
+                          disabled={!canPrev}
+                          className={`px-3 py-1.5 rounded-lg border ${!canPrev ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                        >◀ Prev</button>
+                        <div className="text-xs text-gray-500">Image {previewModal.index + 1} of {files.length}</div>
+                        <button
+                          onClick={() => setPreviewModal(p => ({ ...p, index: Math.min(files.length - 1, p.index + 1) }))}
+                          disabled={!canNext}
+                          className={`px-3 py-1.5 rounded-lg border ${!canNext ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                        >Next ▶</button>
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <>
+                      {previewModal.platform === "amazon" && (
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden">
+                              {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
+                            </div>
+                            <ArrowControls />
+                          </div>
+                          <div className="flex flex-col gap-3">
+                            <h3 className="text-xl font-semibold text-blue-700">Premium Product – AI Enhanced</h3>
+                            <div className="text-2xl font-bold">$29.99</div>
+                            <div className="text-green-600 text-sm">✅ In Stock</div>
+                            <div className="text-xs text-gray-500">FREE delivery tomorrow if you order within 4 hrs 23 mins</div>
+                            <div className="mt-2 flex flex-col gap-3">
+                              <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">Add to Cart</button>
+                              <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">Buy Now</button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {previewModal.platform === "shopee" && (
+                        <div className="rounded-xl border overflow-hidden">
+                          <div className="aspect-[16/10] bg-gray-100">
+                            {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
+                          </div>
+                          <div className="p-4 md:p-5 bg-white">
+                            <div className="font-medium">Premium Product – AI Enhanced</div>
+                            <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span></div>
+                            <div className="mt-4 grid md:grid-cols-2 gap-3">
+                              <button className="rounded-lg border py-2.5 hover:bg-gray-50">Add to Cart</button>
+                              <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">Buy Now</button>
+                            </div>
+                            <ArrowControls />
+                          </div>
+                        </div>
+                      )}
+
+                      {previewModal.platform === "instagram" && (
+                        <div className="rounded-2xl overflow-hidden" style={{ background: "linear-gradient(135deg,#f99 0%,#f09 30%,#90f 70%,#69f 100%)" }}>
+                          <div className="max-w-sm w-full mx-auto my-6 bg-white/90 rounded-xl overflow-hidden shadow-xl">
+                            <div className="flex items-center gap-2 px-4 py-3 border-b">
+                              <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
+                              <div className="text-sm font-medium">your_brand</div>
+                            </div>
+                            <div className="w-full aspect-[4/5] bg-gray-100">
+                              {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
+                            </div>
+                            <div className="px-4 pt-3 pb-4">
+                              <div className="flex items-center gap-4 text-xl mb-2">❤️ 💬 📨</div>
+                              <div className="text-sm"><span className="font-semibold">your_brand</span> Check out our latest product! ✨</div>
+                              <div className="mt-3">
+                                <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">Shop Now</button>
+                              </div>
+                              <ArrowControls />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="flex justify-end px-5 py-4 border-t">
+                <button onClick={closePreview} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Background Removal Review Modal */}
+      {bgReview.open && (
+        <div className="fixed inset-0 z-[120]">
+          <div className="absolute inset-0 bg-black/50" onClick={cancelBgReview} aria-hidden />
+          <div className="relative z-[121] h-full w-full grid place-items-center p-4">
+            <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b">
+                <div className="font-semibold">
+                  Background Removal Review
+                  <span className="ml-2 text-sm text-gray-500">({bgReview.index + 1} of {files.length})</span>
+                </div>
+                <button onClick={cancelBgReview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+              </div>
+
+              <div className="p-5 md:p-6">
+                <div className="grid grid-cols-[40px_1fr_40px] gap-3 items-center">
+                  <button onClick={gotoPrevReview} disabled={bgReview.index === 0}
+                          className={`h-10 w-10 rounded-full grid place-items-center border ${bgReview.index===0?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`} aria-label="Previous">◀</button>
+
+                  <div className="w-full h-[60vh] min-h-[280px] rounded-lg bg-gray-100 border flex items-center justify-center p-2 relative">
+                    {(() => {
+                      const entry = bgReview.cache[bgReview.index];
+                      if (!entry || entry.loading) return <div className="text-2xl text-gray-500 animate-pulse">⏳ Processing…</div>;
+                      if (entry.error) {
+                        return (
+                          <div className="p-4 text-center">
+                            <div className="text-red-600 font-medium mb-1">Failed</div>
+                            <div className="text-sm text-red-700/80">{entry.error}</div>
+                            <button onClick={tryAgainCurrentBg} className="mt-3 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm">Try Again</button>
+                          </div>
+                        );
+                      }
+                      return (
+                        <>
+                          <img src={entry.url} alt="Processed preview" className="w-full h-full object-contain" />
+                          {entry.accepted && (
+                            <div className="absolute top-3 right-3 px-2 py-1 text-xs rounded bg-emerald-600 text-white">Accepted</div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <button onClick={gotoNextReview} disabled={bgReview.index >= files.length - 1}
+                          className={`h-10 w-10 rounded-full grid place-items-center border ${bgReview.index>=files.length-1?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`} aria-label="Next">▶</button>
+                </div>
+
+                <p className="text-sm text-gray-600 mt-4">Accept to keep this result. Or Try Again / Retake to change the source.</p>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-2 justify-end px-5 py-4 border-t">
+                {bgReview.cache[bgReview.index]?.accepted ? (
+                  <div className="flex items-center text-emerald-700 text-sm mr-auto">✅ Accepted</div>
+                ) : null}
+
+                <button onClick={tryAgainCurrentBg} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Try Again</button>
+                <button onClick={retakeOrChangePhoto} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Retake / Change This Photo</button>
+
+                {!bgReview.cache[bgReview.index]?.accepted && (
+                  <button onClick={acceptCurrentBg} className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">Accept</button>
+                )}
+                {bgReview.cache[bgReview.index]?.accepted && (
+                  <button
+                    onClick={() => {
+                      const next = findNextUnaccepted(bgReview.cache, bgReview.index + 1);
+                      if (next === -1) finishBgReview(); else setBgReview(p => ({ ...p, index: next }));
+                    }}
+                    className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+                  >
+                    Next
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Cropper Modal (server-viewport) */}
+      {cropper?.open && (
+        <InteractiveCropper
+          cropper={cropper}
+          setCropper={setCropper}
+          options={CROP_OPTIONS}
+          onClose={() => setCropper(null)}
+        />
+      )}
     </div>
   );
 }
+
+
