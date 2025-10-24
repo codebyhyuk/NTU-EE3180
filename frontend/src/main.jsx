@@ -14,7 +14,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/" element={<App />} />
         <Route path="/about" element={<About />} />
         <Route path="/single-processing" element={<SingleProcessing />} />
-        <Route path="/batch-processing" element={<BatchProcessing />} />
+        {/*<Route path="/batch-processing" element={<BatchProcessing />} /> */}
       </Routes>
     </BrowserRouter>
   </React.StrictMode>
