@@ -1,4 +1,3 @@
-// ProcessingAdaptive.jsx
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
@@ -170,16 +169,16 @@ function InteractiveCropper({ cropper, setCropper, options, onClose }) {
     <div className="fixed inset-0 z-[140]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
       <div className="relative z-[141] h-full w-full grid place-items-center p-4">
-        <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="w-full max-w-3xl lux-panel overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--lux-border)]">
             <div className="font-semibold">Manual Crop – {opt.label} ({opt.width}×{opt.height})</div>
-            <button onClick={onClose} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+            <button onClick={onClose} className="h-8 w-8 rounded-full grid place-items-center hover:bg-[rgba(255,255,255,.06)]" aria-label="Close">✖️</button>
           </div>
 
           <div className="p-5 md:p-6">
             <div
               ref={frameRef}
-              className="relative mx-auto bg-gray-100 border rounded-lg overflow-hidden touch-none select-none"
+              className="relative mx-auto bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] rounded-xl overflow-hidden touch-none select-none"
               style={{ width: "100%", maxWidth: "720px", aspectRatio: `${opt.width} / ${opt.height}` }}
               onMouseDown={startDrag}
               onMouseMove={moveDrag}
@@ -209,7 +208,7 @@ function InteractiveCropper({ cropper, setCropper, options, onClose }) {
                   }}
                 />
               )}
-              <div className="absolute inset-0 ring-1 ring-black/10 pointer-events-none" />
+              <div className="absolute inset-0 ring-1 ring-black/20 pointer-events-none" />
             </div>
 
             {cropper.tracks.length > 1 && (
@@ -217,29 +216,29 @@ function InteractiveCropper({ cropper, setCropper, options, onClose }) {
                 <button
                   onClick={() => setCropper(p => ({ ...p, index: Math.max(0, p.index - 1) }))}
                   disabled={cropper.index === 0}
-                  className={`px-3 py-2 rounded-lg border ${cropper.index===0?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`}
+                  className={`px-3 py-2 rounded-lg border border-[var(--lux-border)] ${cropper.index===0?"opacity-40 cursor-not-allowed":"hover:bg-[rgba(255,255,255,.06)]"}`}
                 >
                   ◀ Prev
                 </button>
-                <div className="text-sm text-gray-600">Image {cropper.index + 1} of {cropper.tracks.length}</div>
+                <div className="text-sm lux-subtle">Image {cropper.index + 1} of {cropper.tracks.length}</div>
                 <button
                   onClick={() => setCropper(p => ({ ...p, index: Math.min(p.tracks.length - 1, p.index + 1) }))}
                   disabled={cropper.index >= cropper.tracks.length - 1}
-                  className={`px-3 py-2 rounded-lg border ${cropper.index>=cropper.tracks.length-1?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`}
+                  className={`px-3 py-2 rounded-lg border border-[var(--lux-border)] ${cropper.index>=cropper.tracks.length-1?"opacity-40 cursor-not-allowed":"hover:bg-[rgba(255,255,255,.06)]"}`}
                 >
                   Next ▶
                 </button>
               </div>
             )}
 
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs lux-subtle mt-3">
               Tip: drag to position. Use mouse wheel to zoom. Your server receives an exact viewport for {opt.width}×{opt.height}.
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 px-5 py-4 border-t">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Cancel</button>
-            <button onClick={downloadAll} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">⬇️ Download Cropped</button>
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--lux-border)]">
+            <button onClick={onClose} className="lux-btn-ghost">Cancel</button>
+            <button onClick={downloadAll} className="lux-btn">⬇️ Download Cropped</button>
           </div>
         </div>
       </div>
@@ -427,35 +426,29 @@ export default function ProcessingAdaptive() {
     e.target.value = "";
   };
 
-  /* ---------- REMOVE ONE IMAGE (red X) ---------- */
+  /* ---------- REMOVE ONE IMAGE ---------- */
   function removeImageAt(idx) {
     if (idx < 0 || idx >= files.length) return;
 
-    // Revoke any per-item URLs we own
     const w = working[idx];
     if (w?.url) URL.revokeObjectURL(w.url);
 
-    // If bg review cache exists, revoke its preview URL too
     const reviewItem = bgReview.cache?.[idx];
     if (reviewItem?.url) URL.revokeObjectURL(reviewItem.url);
 
-    // Splice arrays consistently
     setFiles(prev => prev.filter((_, i) => i !== idx));
     setWorking(prev => prev.filter((_, i) => i !== idx));
     setDescs(prev => prev.filter((_, i) => i !== idx));
     setDescLoading(prev => prev.filter((_, i) => i !== idx));
     setDescError(prev => prev.filter((_, i) => i !== idx));
 
-    // Adjust active preview index
     setActiveIndex(prev => {
       if (prev > idx) return prev - 1;
-      return Math.min(prev, Math.max(0, files.length - 2)); // -2 because one will be removed
+      return Math.min(prev, Math.max(0, files.length - 2));
     });
 
-    // If we were replacing this index, cancel replace
     setReplaceIndex(prev => (prev === idx ? null : (prev != null && prev > idx ? prev - 1 : prev)));
 
-    // If review modal is open, update its cache and index
     setBgReview(prev => {
       if (!prev.open) return prev;
       const nextCache = prev.cache.filter((_, i) => i !== idx);
@@ -472,7 +465,6 @@ export default function ProcessingAdaptive() {
     const url = URL.createObjectURL(blob);
     setWorking((prev) => {
       const next = prev.slice();
-      // revoke existing url in slot if any
       if (next[i]?.url) URL.revokeObjectURL(next[i].url);
       next[i] = { url, blob };
       return next;
@@ -482,7 +474,7 @@ export default function ProcessingAdaptive() {
   /* ---------- all-accepted gate ---------- */
   const allAccepted = files.length > 0 && files.every((_, i) => Boolean(working[i]?.blob));
 
-  /* ---------- generic runner for single/batch (guarded) ---------- */
+  /* ---------- generic runner ---------- */
   async function runStep(stepFn) {
     if (!files.length) return alert("Please select image(s) first.");
     if (!allAccepted) return alert("Please Accept background removal for all images before continuing.");
@@ -506,7 +498,7 @@ export default function ProcessingAdaptive() {
     }
   }
 
-  /* ---------- step actions (shadow/brand) ---------- */
+  /* ---------- step actions ---------- */
   const onAddShadow = async () => {
     if (!files.length) return alert("Please select image(s) first.");
     setAddShadow(true);
@@ -738,38 +730,39 @@ export default function ProcessingAdaptive() {
 
   /* ---------- UI ---------- */
   return (
-    <div className="min-h-screen bg-[#f6f7fb] text-gray-900">
+    <div className="min-h-screen flex flex-col lux-canvas text-[var(--lux-ink)]">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">📷</div>
-            <Link to="/" className="font-semibold tracking-tight">PhotoPro</Link>
+      <header className="sticky top-0 z-30">
+        <div className="lux-container py-3">
+          <div className="lux-glass rounded-2xl px-5 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[rgba(255,255,255,.08)] grid place-items-center">📷</div>
+              <Link to="/" className="font-semibold tracking-tight">PhotoPro</Link>
+            </div>
+            <div className="text-xs lux-subtle">{status}</div>
           </div>
-          <div className="text-xs text-gray-500">{status}</div>
         </div>
+        <div className="lux-sep" />
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-10">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-center mb-8">
+      <main className="lux-container flex-1 py-10">
+        <h1 className="text-2xl md:text-3xl font-extrabold text-center mb-8 lux-title-glow">
           {isBatch ? `Batch Processing (${files.length})` : "Photo Processing"}
         </h1>
 
         {/* Upload Section */}
-        <section className="rounded-2xl border-2 border-dashed border-blue-300 bg-white p-6 md:p-8 mb-8">
+        <section className="lux-panel p-6 md:p-8 mb-8">
           {isBatch ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {files.map((f, i) => {
                 const src = displayUrlAt(i);
                 return (
-                  <div key={i} className="relative rounded-lg bg-gray-50 border h-44 md:h-48 flex items-center justify-center p-2">
-                    {/* Image */}
+                  <div key={i} className="relative rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] h-44 md:h-48 flex items-center justify-center p-2">
                     <img src={src} alt={`p${i}`} className="w-full h-full object-contain" />
-                    {/* Small red round X */}
                     <button
                       type="button"
                       onClick={() => removeImageAt(i)}
-                      className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:bg-red-700"
+                      className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:brightness-110"
                       title="Remove this photo"
                     >
                       ×
@@ -779,16 +772,15 @@ export default function ProcessingAdaptive() {
               })}
             </div>
           ) : (
-            <div className="relative rounded-lg bg-gray-50 border h-56 md:h-64 flex items-center justify-center mb-4 p-2">
+            <div className="relative rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] h-56 md:h-64 flex items-center justify-center mb-4 p-2">
               {firstPreview
                 ? <img src={firstPreview} alt="preview" className="w-full h-full object-contain" />
-                : <span className="text-gray-500">Image Preview</span>}
-              {/* For single-file mode, allow delete too */}
+                : <span className="lux-subtle">Image Preview</span>}
               {files.length === 1 && (
                 <button
                   type="button"
                   onClick={() => removeImageAt(0)}
-                  className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:bg-red-700"
+                  className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-red-600 text-white text-sm leading-none grid place-items-center shadow hover:brightness-110"
                   title="Remove this photo"
                 >
                   ×
@@ -798,15 +790,12 @@ export default function ProcessingAdaptive() {
           )}
 
           <div className="text-center">
-            <button
-              onClick={pickFiles}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:bg-blue-700"
-            >
+            <button onClick={pickFiles} className="lux-btn">
               {files.length ? "Change File(s)" : "Select File(s)"}
             </button>
             <input ref={inputRef} type="file" accept="image/*" multiple onChange={onChangeFiles} className="hidden" />
             {files.length > 0 && (
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="mt-2 text-xs lux-subtle">
                 Selected {files.length} file{files.length > 1 ? "s" : ""}
               </div>
             )}
@@ -814,12 +803,13 @@ export default function ProcessingAdaptive() {
         </section>
 
         {/* Step 1: Background Removal */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8 overflow-hidden">
-          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-2">
+        <section className="lux-panel mb-8 overflow-hidden">
+          <div className="p-5 md:p-6 border-b border-[var(--lux-border)] flex items-center gap-2"
+               style={{ background: "linear-gradient(90deg, rgba(231,193,95,.10), transparent)" }}>
             <span className="text-xl">🧼</span>
             <div>
-              <div className="font-semibold text-gray-800">Step 1: Background Removal</div>
-              <p className="text-sm text-gray-600 mt-0.5">
+              <div className="font-semibold">Step 1: Background Removal</div>
+              <p className="text-sm lux-subtle mt-0.5">
                 Review each image. Accept to keep it. Try Again to reprocess. Retake to upload a replacement.
                 Closing with ✖️ discards all progress.
               </p>
@@ -830,24 +820,25 @@ export default function ProcessingAdaptive() {
               onClick={openRemoveBgReview}
               disabled={!files.length}
               className={`relative group w-full max-w-sm rounded-2xl px-8 py-10 border-2 transition-all duration-300
-                flex flex-col items-center justify-center font-semibold text-lg shadow-sm hover:shadow-lg active:scale-[0.98]
-                ${!files.length ? "opacity-60 cursor-not-allowed bg-gray-100 text-gray-400"
-                                 : "bg-gradient-to-br from-white to-gray-50 text-gray-700 hover:from-blue-50 hover:to-indigo-50 hover:text-indigo-700 border-blue-200"}`}
+                flex flex-col items-center justify-center font-semibold text-lg lux-hover
+                ${!files.length ? "opacity-60 cursor-not-allowed bg-[rgba(255,255,255,.03)] text-[var(--lux-ink-dim)] border-[var(--lux-border)]"
+                                 : "bg-[rgba(255,255,255,.04)] text-[var(--lux-ink)] border-[var(--lux-border)]"}`}
             >
-              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform duration-300">🪄</div>
+              <div className="text-5xl mb-3">🪄</div>
               <span>Remove Backgrounds</span>
             </button>
-            {!files.length && <p className="mt-4 text-sm text-gray-500 italic">Please upload one or more images first.</p>}
+            {!files.length && <p className="mt-4 text-sm lux-subtle italic">Please upload one or more images first.</p>}
           </div>
         </section>
 
         {/* Step 2 + 3 */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-indigo-50 to-blue-50">
-            <div className="font-semibold text-gray-800">Step 2 + 3: Background Generation + Shadow Options</div>
-            <p className="text-sm text-gray-600 mt-1">Choose how you want to combine background generation and shadow style.</p>
+        <section className="lux-panel mb-8">
+          <div className="p-5 md:p-6 border-b border-[var(--lux-border)]"
+               style={{ background: "linear-gradient(90deg, transparent, rgba(231,193,95,.10))" }}>
+            <div className="font-semibold">Step 2 + 3: Background Generation + Shadow Options</div>
+            <p className="text-sm lux-subtle mt-1">Choose how you want to combine background generation and shadow style.</p>
             {!allAccepted && files.length > 0 && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-black-300/90 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1 mt-2 inline-block">
                 Finish Step 1 (Accept all) to enable this step.
               </p>
             )}
@@ -857,8 +848,8 @@ export default function ProcessingAdaptive() {
             <button
               onClick={() => setBgShadowOption("shadow-text")}
               disabled={!files.length || isBusy || !allAccepted}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
-                ${bgShadowOption === "shadow-text" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
+              className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
+                ${bgShadowOption === "shadow-text" ? "ring-2 ring-[var(--lux-gold)] bg-[rgba(255,255,255,.06)]" : "bg-[rgba(255,255,255,.03)]"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">🌤️</div>
               <div className="font-medium">Shadow + New Background Based on Text</div>
@@ -867,8 +858,8 @@ export default function ProcessingAdaptive() {
             <button
               onClick={() => setBgShadowOption("no-shadow-text")}
               disabled={!files.length || isBusy || !allAccepted}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
-                ${bgShadowOption === "no-shadow-text" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
+              className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
+                ${bgShadowOption === "no-shadow-text" ? "ring-2 ring-[var(--lux-gold)] bg-[rgba(255,255,255,.06)]" : "bg-[rgba(255,255,255,.03)]"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">🎨</div>
               <div className="font-medium">No Shadow + New Background Based on Text</div>
@@ -878,12 +869,12 @@ export default function ProcessingAdaptive() {
               onClick={async () => {
                 setBgShadowOption("shadow-white");
                 setAddShadow(true);
-                await runStep(apiAddShadow);
+                await onAddShadow();
                 setBrandKitChoice("white");
               }}
               disabled={!files.length || isBusy || !allAccepted}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
-                ${bgShadowOption === "shadow-white" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
+              className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
+                ${bgShadowOption === "shadow-white" ? "ring-2 ring-[var(--lux-gold)] bg-[rgba(255,255,255,.06)]" : "bg-[rgba(255,255,255,.03)]"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">⚪️</div>
               <div className="font-medium">Shadow + White Background</div>
@@ -896,8 +887,8 @@ export default function ProcessingAdaptive() {
                 setBrandKitChoice("skip");
               }}
               disabled={!files.length || isBusy || !allAccepted}
-              className={`rounded-xl border p-6 text-center transition shadow-sm hover:shadow-md
-                ${bgShadowOption === "skip" ? "ring-2 ring-blue-500 bg-blue-50" : "bg-white"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
+              className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
+                ${bgShadowOption === "skip" ? "ring-2 ring-[var(--lux-gold)] bg-[rgba(255,255,255,.06)]" : "bg-[rgba(255,255,255,.03)]"} ${(isBusy || !allAccepted) ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <div className="text-3xl mb-2">⏭️</div>
               <div className="font-medium">Skip</div>
@@ -909,32 +900,31 @@ export default function ProcessingAdaptive() {
         {(bgShadowOption === "shadow-text" || bgShadowOption === "no-shadow-text") && (
           <div className="fixed inset-0 z-[130] flex items-center justify-center">
             <div className="absolute inset-0 bg-black/40" onClick={() => setBgShadowOption(null)} />
-            <div className="relative bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6">
+            <div className="relative lux-panel w-[90%] max-w-md p-6">
               <h2 className="text-xl font-semibold mb-3">Describe Your Desired Background</h2>
-              <p className="text-sm text-gray-600 mb-4">Example: “minimalist wooden tabletop”, “bright pastel room”, “dark studio lighting”</p>
+              <p className="text-sm lux-subtle mb-4">Example: “minimalist wooden tabletop”, “bright pastel room”, “dark studio lighting”</p>
               <input
                 type="text"
                 value={brandText}
                 onChange={(e) => setBrandText(e.target.value)}
                 placeholder="Enter your background style..."
-                className="w-full border rounded-lg px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-blue-500"
+                className="lux-input mb-5"
               />
               <div className="flex justify-end gap-3">
-                <button onClick={() => setBgShadowOption(null)} className="px-4 py-2 rounded-lg border hover:bg-gray-50">Cancel</button>
+                <button onClick={() => setBgShadowOption(null)} className="lux-btn-ghost">Cancel</button>
                 <button
                   onClick={async () => {
                     if (!brandText.trim()) return alert("Please describe your background first.");
                     if (bgShadowOption === "shadow-text") {
                       setAddShadow(true);
-                      await runStep(apiAddShadow);
+                      await onAddShadow();
                     } else {
                       setAddShadow(false);
                     }
-                    await runStep((blob) => apiApplyBrand(blob, brandText.trim()));
-                    setBrandKitChoice("create");
+                    await onCreateBrandKit();
                     setBgShadowOption(null);
                   }}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  className="lux-btn"
                 >
                   Generate
                 </button>
@@ -944,24 +934,24 @@ export default function ProcessingAdaptive() {
         )}
 
         {/* Step 4: Processing / Download (gallery) */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+        <section className="lux-panel mb-8">
           <div className="p-5 md:p-6">
             <div className="font-semibold">Step 4: Processing your image{isBatch ? "s" : ""}!</div>
             {isBatch && files.length > 0 && (
-              <p className="text-sm text-gray-600 mt-1">Click a thumbnail below to preview another image.</p>
+              <p className="text-sm lux-subtle mt-1">Click a thumbnail below to preview another image.</p>
             )}
           </div>
 
           <div className="px-5 md:px-6">
-            <div className="rounded-lg bg-gray-50 border h-64 md:h-80 flex items-center justify-center overflow-hidden p-2">
+            <div className="rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] h-64 md:h-80 flex items-center justify-center overflow-hidden p-2">
               {files.length ? (
                 displayUrlAt(activeIndex) ? (
                   <img src={displayUrlAt(activeIndex)} alt={`result_${activeIndex + 1}`} className="w-full h-full object-contain" />
                 ) : (
-                  <span className="text-gray-500">Preparing preview…</span>
+                  <span className="lux-subtle">Preparing preview…</span>
                 )
               ) : (
-                <span className="text-gray-500">AI-Enhanced Image</span>
+                <span className="lux-subtle">AI-Enhanced Image</span>
               )}
             </div>
           </div>
@@ -985,8 +975,8 @@ export default function ProcessingAdaptive() {
                       <div
                         className={[
                           "relative h-20 w-20 md:h-24 md:w-24 rounded-lg",
-                          "border border-black/70 bg-white overflow-hidden",
-                          selected ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-white" : "hover:shadow-sm"
+                          "border border-[var(--lux-border)] bg-[rgba(255,255,255,.04)] overflow-hidden",
+                          selected ? "ring-2 ring-[var(--lux-gold)] ring-offset-2 ring-offset-[var(--lux-bg)]" : "hover:shadow-sm"
                         ].join(" ")}
                       >
                         {url ? (
@@ -996,14 +986,13 @@ export default function ProcessingAdaptive() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <span className="absolute inset-0 grid place-items-center text-xs text-gray-400">…</span>
+                          <span className="absolute inset-0 grid place-items-center text-xs lux-subtle">…</span>
                         )}
 
-                        {/* Delete button on thumbnails too (optional here) */}
                         <span
                           className={[
                             "absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded",
-                            processed ? "bg-emerald-600 text-white" : "bg-gray-300 text-gray-700"
+                            processed ? "bg-emerald-600 text-white" : "bg-[rgba(255,255,255,.6)] text-black/80"
                           ].join(" ")}
                         >
                           {processed ? "Processed" : "Original"}
@@ -1020,7 +1009,7 @@ export default function ProcessingAdaptive() {
             <button
               onClick={() => downloadOne(activeIndex)}
               disabled={!files.length || isBusy}
-              className="w-full sm:w-auto px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow disabled:opacity-60"
+              className="w-full sm:w-auto lux-btn disabled:opacity-60"
             >
               ⬇️ Download This
             </button>
@@ -1028,7 +1017,7 @@ export default function ProcessingAdaptive() {
             <button
               onClick={downloadAll}
               disabled={!files.length || isBusy}
-              className="w-full sm:w-auto px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shadow disabled:opacity-60"
+              className="w-full sm:w-auto lux-btn disabled:opacity-60"
             >
               ⬇️ {isBatch ? "Download All" : "Download Image"}
             </button>
@@ -1036,16 +1025,16 @@ export default function ProcessingAdaptive() {
         </section>
 
         {/* Step 5: Smart Crop */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+        <section className="lux-panel mb-8">
           <div className="p-5 md:p-6">
             <div className="font-semibold">
-              Step 5: Smart Crop for Platforms <span className="text-gray-400 text-sm">(Optional)</span>
+              Step 5: Smart Crop for Platforms <span className="lux-subtle text-sm">(Optional)</span>
             </div>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm lux-subtle mt-1">
               Pick a preset, then either bulk-export or open the manual cropper to drag & center each image.
             </p>
             {!allAccepted && files.length > 0 && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-black-300/90 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1 mt-2 inline-block">
                 Finish Step 1 (Accept all) to enable this step.
               </p>
             )}
@@ -1058,12 +1047,12 @@ export default function ProcessingAdaptive() {
                 <button
                   key={opt.id}
                   onClick={() => setSelectedCrop(opt.id)}
-                  className={`rounded-xl border p-4 text-center transition shadow-sm hover:shadow-md
-                    ${active ? "ring-2 ring-violet-500 bg-violet-50" : "bg-white"}`}
+                  className={`rounded-xl border border-[var(--lux-border)] p-4 text-center transition lux-hover
+                    ${active ? "ring-2 ring-[var(--lux-gold)] bg-[rgba(255,255,255,.06)]" : "bg-[rgba(255,255,255,.03)]"}`}
                 >
-                  <div className="h-12 w-16 mx-auto rounded bg-gray-100 mb-2" />
-                  <div className="text-sm text-gray-800 font-medium">{opt.label}</div>
-                  <div className="text-xs text-gray-500">{opt.width}×{opt.height}px</div>
+                  <div className="h-12 w-16 mx-auto rounded bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] mb-2" />
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs lux-subtle">{opt.width}×{opt.height}px</div>
                 </button>
               );
             })}
@@ -1073,9 +1062,7 @@ export default function ProcessingAdaptive() {
             <button
               onClick={downloadCropped}
               disabled={!selectedCrop || !files.length || isCropping || !allAccepted}
-              className={`px-4 py-2 rounded-lg font-medium shadow
-                ${(!selectedCrop || !files.length || isCropping || !allAccepted) ? "bg-emerald-300 cursor-not-allowed text-white/80"
-                                                                                  : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
+              className="lux-btn disabled:opacity-60"
             >
               {isCropping ? "Cropping..." : "⬇️ Download Cropped (Auto)"}
             </button>
@@ -1083,9 +1070,7 @@ export default function ProcessingAdaptive() {
             <button
               onClick={openCropper}
               disabled={!selectedCrop || !files.length || !allAccepted}
-              className={`px-4 py-2 rounded-lg font-medium shadow
-                ${(!selectedCrop || !files.length || !allAccepted) ? "bg-indigo-300 cursor-not-allowed text-white/80"
-                                                                   : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+              className="lux-btn disabled:opacity-60"
             >
               ✂️ Open Manual Cropper
             </button>
@@ -1093,41 +1078,41 @@ export default function ProcessingAdaptive() {
         </section>
 
         {/* Step 6: Platform Preview */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
+        <section className="lux-panel mb-8">
           <div className="p-5 md:p-6">
             <div className="font-semibold mb-3">🛍 Step 6: Platform Preview</div>
-            <p className="text-sm text-gray-600 mb-4">See how your processed image could look on different platforms. Click to preview.</p>
+            <p className="text-sm lux-subtle mb-4">See how your processed image could look on different platforms. Click to preview.</p>
             {!allAccepted && files.length > 0 && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 -mt-2 mb-2 inline-block">
+              <p className="text-xs text-black-300/90 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1 -mt-2 mb-2 inline-block">
                 Finish Step 1 (Accept all) to enable this step.
               </p>
             )}
 
             <div className="grid md:grid-cols-3 gap-5">
               <button onClick={() => allAccepted && openPreview("amazon")} disabled={!allAccepted}
-                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-blue-400"}`}>
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">🛒</div>
+                className={`group rounded-2xl border border-[var(--lux-border)] transition lux-hover bg-[rgba(255,255,255,.03)] overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-[var(--lux-gold)]"}`}>
+                <div className="h-44 bg-[rgba(255,255,255,.06)] grid place-items-center text-4xl">🛒</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Amazon</div>
-                  <div className="text-xs text-gray-500">Product listing layout</div>
+                  <div className="text-xs lux-subtle">Product listing layout</div>
                 </div>
               </button>
 
               <button onClick={() => allAccepted && openPreview("shopee")} disabled={!allAccepted}
-                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-orange-400"}`}>
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">🛍️</div>
+                className={`group rounded-2xl border border-[var(--lux-border)] transition lux-hover bg-[rgba(255,255,255,.03)] overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-[var(--lux-gold)]"}`}>
+                <div className="h-44 bg-[rgba(255,255,255,.06)] grid place-items-center text-4xl">🛍️</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Shopee</div>
-                  <div className="text-xs text-gray-500">Mobile-first design</div>
+                  <div className="text-xs lux-subtle">Mobile-first design</div>
                 </div>
               </button>
 
               <button onClick={() => allAccepted && openPreview("instagram")} disabled={!allAccepted}
-                className={`group rounded-2xl border transition shadow-sm hover:shadow-md bg-white overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-pink-400"}`}>
-                <div className="h-44 bg-gray-100 grid place-items-center text-4xl">📸</div>
+                className={`group rounded-2xl border border-[var(--lux-border)] transition lux-hover bg-[rgba(255,255,255,.03)] overflow-hidden text-left ${!allAccepted ? "opacity-50 cursor-not-allowed" : "hover:border-[var(--lux-gold)]"}`}>
+                <div className="h-44 bg-[rgba(255,255,255,.06)] grid place-items-center text-4xl">📸</div>
                 <div className="px-4 py-3">
                   <div className="font-medium">Instagram</div>
-                  <div className="text-xs text-gray-500">Social media posts</div>
+                  <div className="text-xs lux-subtle">Social media posts</div>
                 </div>
               </button>
             </div>
@@ -1135,14 +1120,15 @@ export default function ProcessingAdaptive() {
         </section>
 
         {/* 🆕 Step 7: AI Product Description */}
-        <section className="bg-white rounded-2xl shadow-sm border mb-8">
-          <div className="p-5 md:p-6 border-b bg-gradient-to-r from-violet-50 to-fuchsia-50">
+        <section className="lux-panel mb-8 overflow-hidden">
+          <div className="p-5 md:p-6 border-b border-[var(--lux-border)]"
+               style={{ background: "linear-gradient(90deg, rgba(231,193,95,.10), transparent)" }}>
             <div className="font-semibold">Step 7: AI Product Description</div>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm lux-subtle mt-1">
               Generate SEO-friendly, tone-controlled descriptions from your final image.
             </p>
             {!allAccepted && files.length > 0 && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-black-300/90 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1 mt-2 inline-block">
                 Finish Step 1 (Accept all) to enable this step.
               </p>
             )}
@@ -1151,13 +1137,13 @@ export default function ProcessingAdaptive() {
           <div className="px-5 md:px-6 py-5 grid md:grid-cols-[1fr_1.2fr] gap-5">
             {/* Left: image + controls */}
             <div>
-              <div className="rounded-lg bg-gray-50 border h-56 md:h-64 flex items-center justify-center overflow-hidden p-2">
+              <div className="rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] h-56 md:h-64 flex items-center justify-center overflow-hidden p-2">
                 {files.length ? (
                   displayUrlAt(activeIndex) ? (
                     <img src={displayUrlAt(activeIndex)} alt={`desc_${activeIndex+1}`} className="w-full h-full object-contain" />
-                  ) : <span className="text-gray-500">Preparing preview…</span>
+                  ) : <span className="lux-subtle">Preparing preview…</span>
                 ) : (
-                  <span className="text-gray-500">Upload an image to generate text</span>
+                  <span className="lux-subtle">Upload an image to generate text</span>
                 )}
               </div>
 
@@ -1165,7 +1151,7 @@ export default function ProcessingAdaptive() {
                 <select
                   value={tone}
                   onChange={(e) => setTone(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="lux-input"
                   disabled={!files.length || !allAccepted}
                 >
                   <option value="default">Tone: Default</option>
@@ -1179,7 +1165,7 @@ export default function ProcessingAdaptive() {
                   <button
                     onClick={() => generateDescFor(activeIndex)}
                     disabled={!files.length || descLoading[activeIndex] || !allAccepted}
-                    className={`flex-1 px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading[activeIndex] || !allAccepted) ? "bg-indigo-300 cursor-not-allowed text-white/80" : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+                    className="lux-btn disabled:opacity-60 flex-1"
                   >
                     {descs[activeIndex] ? "🔁 Regenerate" : "✨ Generate"}
                   </button>
@@ -1187,7 +1173,7 @@ export default function ProcessingAdaptive() {
                     <button
                       onClick={generateDescForAll}
                       disabled={!files.length || descLoading.some(Boolean) || !allAccepted}
-                      className={`px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading.some(Boolean) || !allAccepted) ? "bg-blue-300 cursor-not-allowed text-white/80" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+                      className="lux-btn disabled:opacity-60"
                     >
                       ✨ All
                     </button>
@@ -1211,14 +1197,14 @@ export default function ProcessingAdaptive() {
                         <div
                           className={[
                             "relative h-16 w-16 rounded-lg",
-                            "border border-black/70 bg-white overflow-hidden",
-                            selected ? "ring-2 ring-fuchsia-500 ring-offset-2 ring-offset-white" : "hover:shadow-sm"
+                            "border border-[var(--lux-border)] bg-[rgba(255,255,255,.04)] overflow-hidden",
+                            selected ? "ring-2 ring-[var(--lux-gold)] ring-offset-2 ring-offset-[var(--lux-bg)]" : "hover:shadow-sm"
                           ].join(" ")}
                         >
                           {url ? <img src={url} alt={`mini_${i+1}`} className="w-full h-full object-cover" /> : null}
                           <span className={[
                             "absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded",
-                            hasDesc ? "bg-emerald-600 text-white" : "bg-gray-300 text-gray-700"
+                            hasDesc ? "bg-emerald-600 text-white" : "bg-[rgba(255,255,255,.6)] text-black/80"
                           ].join(" ")}>
                             {hasDesc ? "Ready" : "Empty"}
                           </span>
@@ -1232,45 +1218,45 @@ export default function ProcessingAdaptive() {
 
             {/* Right: output editor */}
             <div className="flex flex-col">
-              <label className="text-sm text-gray-600 mb-1">Generated Description</label>
+              <label className="text-sm lux-subtle mb-1">Generated Description</label>
               <div className="relative">
                 <textarea
                   value={descs[activeIndex] || ""}
                   onChange={(e) => setDescAt(activeIndex, e.target.value)}
                   placeholder={descLoading[activeIndex] ? "Generating…" : "Click Generate to create a product description..."}
-                  className="w-full min-h-[220px] rounded-lg border px-3 py-3 focus:ring-2 focus:ring-fuchsia-500 outline-none"
+                  className="w-full min-h-[220px] rounded-xl border border-[var(--lux-border)] bg-[rgba(255,255,255,.03)] px-3 py-3 focus:ring-2 focus:ring-[var(--lux-gold)] outline-none"
                   disabled={!allAccepted}
                 />
                 {descLoading[activeIndex] && (
-                  <div className="absolute inset-0 grid place-items-center bg-white/70 rounded-lg">
-                    <div className="animate-pulse text-gray-600">✨ Thinking…</div>
+                  <div className="absolute inset-0 grid place-items-center bg-[rgba(0,0,0,.25)] rounded-xl">
+                    <div className="animate-pulse">✨ Thinking…</div>
                   </div>
                 )}
               </div>
 
               {descError[activeIndex] && (
-                <div className="mt-2 text-sm text-red-600">{descError[activeIndex]}</div>
+                <div className="mt-2 text-sm text-red-400">{descError[activeIndex]}</div>
               )}
 
               <div className="mt-3 flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => copyCurrentDesc(activeIndex)}
                   disabled={!descs[activeIndex] || !allAccepted}
-                  className={`px-4 py-2 rounded-lg font-medium border ${(descs[activeIndex] && allAccepted) ? "bg-white hover:bg-gray-50" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}
+                  className="lux-btn-outline disabled:opacity-60"
                 >
                   📋 Copy
                 </button>
 
-                <button
+               {/*} <button
                   onClick={() => generateDescFor(activeIndex)}
                   disabled={!files.length || descLoading[activeIndex] || !allAccepted}
-                  className={`px-4 py-2 rounded-lg font-medium shadow ${(!files.length || descLoading[activeIndex] || !allAccepted) ? "bg-violet-300 cursor-not-allowed text-white/80" : "bg-violet-600 hover:bg-violet-700 text-white"}`}
+                  className="lux-btn disabled:opacity-60"
                 >
                   🔁 Regenerate
-                </button>
+                </button>*/}
               </div>
 
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs lux-subtle">
                 Tip: Edit the text directly to fine-tune keywords or add dimensions, SKU, or warranty info before copying.
               </p>
             </div>
@@ -1283,14 +1269,14 @@ export default function ProcessingAdaptive() {
         <div className="fixed inset-0 z-[100]">
           <div className="absolute inset-0 bg-black/50" onClick={closePreview} aria-hidden />
           <div className="relative z-[101] h-full w-full grid place-items-center p-4">
-            <div className="relative w-full max-w-xl md:max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh]">
-              <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="relative w-full max-w-xl md:max-w-3xl lux-panel overflow-hidden max-h-[90vh]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--lux-border)]">
                 <div className="font-semibold">
                   {previewModal.platform === "amazon"    && "Amazon Listing Preview"}
                   {previewModal.platform === "shopee"    && "Shopee Product Preview"}
                   {previewModal.platform === "instagram" && "Instagram Post Preview"}
                 </div>
-                <button onClick={closePreview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+                <button onClick={closePreview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-[rgba(255,255,255,.06)]" aria-label="Close">✖️</button>
               </div>
 
               <div className="p-5 md:p-6">
@@ -1306,13 +1292,13 @@ export default function ProcessingAdaptive() {
                         <button
                           onClick={() => setPreviewModal(p => ({ ...p, index: Math.max(0, p.index - 1) }))}
                           disabled={!canPrev}
-                          className={`px-3 py-1.5 rounded-lg border ${!canPrev ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                          className={`px-3 py-1.5 rounded-lg border border-[var(--lux-border)] ${!canPrev ? "opacity-40 cursor-not-allowed" : "hover:bg-[rgba(255,255,255,.06)]"}`}
                         >◀ Prev</button>
-                        <div className="text-xs text-gray-500">Image {previewModal.index + 1} of {files.length}</div>
+                        <div className="text-xs lux-subtle">Image {previewModal.index + 1} of {files.length}</div>
                         <button
                           onClick={() => setPreviewModal(p => ({ ...p, index: Math.min(files.length - 1, p.index + 1) }))}
                           disabled={!canNext}
-                          className={`px-3 py-1.5 rounded-lg border ${!canNext ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-50"}`}
+                          className={`px-3 py-1.5 rounded-lg border border-[var(--lux-border)] ${!canNext ? "opacity-40 cursor-not-allowed" : "hover:bg-[rgba(255,255,255,.06)]"}`}
                         >Next ▶</button>
                       </div>
                     );
@@ -1323,36 +1309,36 @@ export default function ProcessingAdaptive() {
                       {previewModal.platform === "amazon" && (
                         <div className="grid md:grid-cols-2 gap-6">
                           <div>
-                            <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden">
+                            <div className="aspect-square rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] overflow-hidden">
                               {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
                             </div>
                             <ArrowControls />
                           </div>
                           <div className="flex flex-col gap-3">
-                            <h3 className="text-xl font-semibold text-blue-700">Premium Product – AI Enhanced</h3>
-                            <div className="text-2xl font-bold">$29.99</div>
-                            <div className="text-green-600 text-sm">✅ In Stock</div>
-                            <div className="text-xs text-gray-500">FREE delivery tomorrow if you order within 4 hrs 23 mins</div>
+                            <h3 className="text-xl font-semibold">Premium Product – AI Enhanced</h3>
+                            <div className="text-2xl font-bold lux-gold-text">$29.99</div>
+                            <div className="text-emerald-400 text-sm">✅ In Stock</div>
+                            <div className="text-xs lux-subtle">FREE delivery tomorrow if you order within 4 hrs 23 mins</div>
                             <div className="mt-2 flex flex-col gap-3">
-                              <button className="w-full rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3">Add to Cart</button>
-                              <button className="w-full rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">Buy Now</button>
+                              <button className="lux-btn-outline">Add to Cart</button>
+                              <button className="lux-btn">Buy Now</button>
                             </div>
                           </div>
                         </div>
                       )}
 
                       {previewModal.platform === "shopee" && (
-                        <div className="rounded-xl border overflow-hidden">
-                          <div className="aspect-[16/10] bg-gray-100">
+                        <div className="rounded-xl border border-[var(--lux-border)] overflow-hidden">
+                          <div className="aspect-[16/10] bg-[rgba(255,255,255,.06)]">
                             {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
                           </div>
-                          <div className="p-4 md:p-5 bg-white">
+                          <div className="p-4 md:p-5">
                             <div className="font-medium">Premium Product – AI Enhanced</div>
-                            <div className="text-2xl font-bold text-orange-600 mt-1">$29.99</div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span></div>
+                            <div className="text-2xl font-bold lux-gold-text mt-1">$29.99</div>
+                            <div className="flex items-center gap-2 text-xs lux-subtle mt-1">⭐⭐⭐⭐⭐ <span>4.8 (234 reviews)</span></div>
                             <div className="mt-4 grid md:grid-cols-2 gap-3">
-                              <button className="rounded-lg border py-2.5 hover:bg-gray-50">Add to Cart</button>
-                              <button className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-2.5">Buy Now</button>
+                              <button className="lux-btn-outline">Add to Cart</button>
+                              <button className="lux-btn">Buy Now</button>
                             </div>
                             <ArrowControls />
                           </div>
@@ -1361,19 +1347,19 @@ export default function ProcessingAdaptive() {
 
                       {previewModal.platform === "instagram" && (
                         <div className="rounded-2xl overflow-hidden" style={{ background: "linear-gradient(135deg,#f99 0%,#f09 30%,#90f 70%,#69f 100%)" }}>
-                          <div className="max-w-sm w-full mx-auto my-6 bg-white/90 rounded-xl overflow-hidden shadow-xl">
-                            <div className="flex items-center gap-2 px-4 py-3 border-b">
-                              <div className="h-7 w-7 rounded-full bg-violet-500 text-white grid place-items-center text-xs font-bold">P</div>
+                          <div className="max-w-sm w-full mx-auto my-6 lux-panel overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--lux-border)]">
+                              <div className="h-7 w-7 rounded-full bg-[rgba(255,255,255,.12)] grid place-items-center text-xs font-bold">P</div>
                               <div className="text-sm font-medium">your_brand</div>
                             </div>
-                            <div className="w-full aspect-[4/5] bg-gray-100">
+                            <div className="w-full aspect-[4/5] bg-[rgba(255,255,255,.06)] border-b border-[var(--lux-border)]">
                               {currentUrl ? <img src={currentUrl} alt="prev" className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center text-5xl">✨</div>}
                             </div>
                             <div className="px-4 pt-3 pb-4">
                               <div className="flex items-center gap-4 text-xl mb-2">❤️ 💬 📨</div>
                               <div className="text-sm"><span className="font-semibold">your_brand</span> Check out our latest product! ✨</div>
                               <div className="mt-3">
-                                <button className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5">Shop Now</button>
+                                <button className="lux-btn w-full">Shop Now</button>
                               </div>
                               <ArrowControls />
                             </div>
@@ -1385,8 +1371,8 @@ export default function ProcessingAdaptive() {
                 })()}
               </div>
 
-              <div className="flex justify-end px-5 py-4 border-t">
-                <button onClick={closePreview} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Close</button>
+              <div className="flex justify-end px-5 py-4 border-t border-[var(--lux-border)]">
+                <button onClick={closePreview} className="lux-btn-ghost">Close</button>
               </div>
             </div>
           </div>
@@ -1398,30 +1384,30 @@ export default function ProcessingAdaptive() {
         <div className="fixed inset-0 z-[120]">
           <div className="absolute inset-0 bg-black/50" onClick={cancelBgReview} aria-hidden />
           <div className="relative z-[121] h-full w-full grid place-items-center p-4">
-            <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b">
+            <div className="w-full max-w-3xl lux-panel overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--lux-border)]">
                 <div className="font-semibold">
                   Background Removal Review
-                  <span className="ml-2 text-sm text-gray-500">({bgReview.index + 1} of {files.length})</span>
+                  <span className="ml-2 text-sm lux-subtle">({bgReview.index + 1} of {files.length})</span>
                 </div>
-                <button onClick={cancelBgReview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-gray-100" aria-label="Close">✖️</button>
+                <button onClick={cancelBgReview} className="h-8 w-8 rounded-full grid place-items-center hover:bg-[rgba(255,255,255,.06)]" aria-label="Close">✖️</button>
               </div>
 
               <div className="p-5 md:p-6">
                 <div className="grid grid-cols-[40px_1fr_40px] gap-3 items-center">
                   <button onClick={gotoPrevReview} disabled={bgReview.index === 0}
-                          className={`h-10 w-10 rounded-full grid place-items-center border ${bgReview.index===0?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`} aria-label="Previous">◀</button>
+                          className={`h-10 w-10 rounded-full grid place-items-center border border-[var(--lux-border)] ${bgReview.index===0?"opacity-40 cursor-not-allowed":"hover:bg-[rgba(255,255,255,.06)]"}`} aria-label="Previous">◀</button>
 
-                  <div className="w-full h-[60vh] min-h-[280px] rounded-lg bg-gray-100 border flex items-center justify-center p-2 relative">
+                  <div className="w-full h-[60vh] min-h-[280px] rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] flex items-center justify-center p-2 relative">
                     {(() => {
                       const entry = bgReview.cache[bgReview.index];
-                      if (!entry || entry.loading) return <div className="text-2xl text-gray-500 animate-pulse">⏳ Processing…</div>;
+                      if (!entry || entry.loading) return <div className="text-2xl lux-subtle animate-pulse">⏳ Processing…</div>;
                       if (entry.error) {
                         return (
                           <div className="p-4 text-center">
-                            <div className="text-red-600 font-medium mb-1">Failed</div>
-                            <div className="text-sm text-red-700/80">{entry.error}</div>
-                            <button onClick={tryAgainCurrentBg} className="mt-3 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm">Try Again</button>
+                            <div className="text-red-400 font-medium mb-1">Failed</div>
+                            <div className="text-sm text-red-300/90">{entry.error}</div>
+                            <button onClick={tryAgainCurrentBg} className="lux-btn mt-3 text-black">Try Again</button>
                           </div>
                         );
                       }
@@ -1437,22 +1423,22 @@ export default function ProcessingAdaptive() {
                   </div>
 
                   <button onClick={gotoNextReview} disabled={bgReview.index >= files.length - 1}
-                          className={`h-10 w-10 rounded-full grid place-items-center border ${bgReview.index>=files.length-1?"opacity-40 cursor-not-allowed":"hover:bg-gray-50"}`} aria-label="Next">▶</button>
+                          className={`h-10 w-10 rounded-full grid place-items-center border border-[var(--lux-border)] ${bgReview.index>=files.length-1?"opacity-40 cursor-not-allowed":"hover:bg-[rgba(255,255,255,.06)]"}`} aria-label="Next">▶</button>
                 </div>
 
-                <p className="text-sm text-gray-600 mt-4">Accept to keep this result. Or Try Again / Retake to change the source.</p>
+                <p className="text-sm lux-subtle mt-4">Accept to keep this result. Or Try Again / Change the source.</p>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-2 justify-end px-5 py-4 border-t">
+              <div className="flex flex-col md:flex-row gap-2 justify-end px-5 py-4 border-t border-[var(--lux-border)]">
                 {bgReview.cache[bgReview.index]?.accepted ? (
-                  <div className="flex items-center text-emerald-700 text-sm mr-auto">✅ Accepted</div>
+                  <div className="flex items-center text-emerald-400 text-sm mr-auto">✅ Accepted</div>
                 ) : null}
 
-                <button onClick={tryAgainCurrentBg} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Try Again</button>
-                <button onClick={retakeOrChangePhoto} className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50">Retake / Change This Photo</button>
+                <button onClick={tryAgainCurrentBg} className="lux-btn-outline">Try Again</button>
+                <button onClick={retakeOrChangePhoto} className="lux-btn-outline">Change This Photo</button>
 
                 {!bgReview.cache[bgReview.index]?.accepted && (
-                  <button onClick={acceptCurrentBg} className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">Accept</button>
+                  <button onClick={acceptCurrentBg} className="lux-btn">Accept</button>
                 )}
                 {bgReview.cache[bgReview.index]?.accepted && (
                   <button
@@ -1460,7 +1446,7 @@ export default function ProcessingAdaptive() {
                       const next = findNextUnaccepted(bgReview.cache, bgReview.index + 1);
                       if (next === -1) finishBgReview(); else setBgReview(p => ({ ...p, index: next }));
                     }}
-                    className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+                    className="lux-btn"
                   >
                     Next
                   </button>
@@ -1483,5 +1469,6 @@ export default function ProcessingAdaptive() {
     </div>
   );
 }
+
 
 

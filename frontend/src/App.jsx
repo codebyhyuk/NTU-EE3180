@@ -1,88 +1,73 @@
 // src/App.jsx
-
 import React from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function App() {
   const navigate = useNavigate();
-  
+
   return (
-    <div className="min-h-screen relative bg-gradient-to-b from-indigo-500 via-indigo-600 to-violet-700 text-white overflow-hidden">
-      {/* Glow overlay */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_25%,rgba(255,255,255,0.25)_0%,rgba(255,255,255,0)_70%)]" />
-
-      {/* Floating subtle particles */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-10 -left-10 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl" />
-      </div>
-
+    <div className="min-h-screen flex flex-col lux-canvas text-[var(--lux-ink)]">
       {/* Header */}
-      <header className="relative z-20 border-b border-white/10 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl drop-shadow-sm">📷</span>
-            <span className="font-bold tracking-tight text-white text-lg">
-              PhotoPro
-            </span>
-          </div>
+      <header className="sticky top-0 z-30">
+        <div className="lux-container py-3">
+          {/* Brighter glass, softer shadow */}
+          <div className="lux-glass rounded-2xl px-5 py-3 flex items-center justify-between shadow-[0_8px_24px_rgba(0,0,0,.06)]">
+            <Link to="/" className="flex items-center gap-2" aria-label="PhotoPro home">
+              <span className="text-2xl leading-none">📷</span>
+              <span className="font-semibold tracking-tight">PhotoPro</span>
+            </Link>
 
-          <nav className="flex items-center gap-4 text-[15px]">
-            <Link
-              to="/"
-              className="px-4 py-1.5 rounded-full bg-white/20 text-white shadow-sm hover:bg-white/30 transition"
-            >
-              Home
-            </Link>
-            <Link
-              to="/single-processing"
-              className="hover:text-yellow-200 transition"
-            >
-              Processing
-            </Link>
-          </nav>
+            <nav className="flex items-center gap-5 text-sm" aria-label="Primary">
+              <Link to="/" className="lux-link">Home</Link>
+              <Link to="/single-processing" className="lux-link">Processing</Link>
+            </nav>
+          </div>
         </div>
+        {/* hairline separator under header for crispness */}
+        <div className="lux-sep" />
       </header>
 
-      {/* Hero Section */}
-      <main className="relative z-10 flex flex-col items-center justify-center text-center px-6 pt-[16vh] pb-[18vh]">
-        <h1 className="text-5xl md:text-7xl font-extrabold leading-tight drop-shadow-[0_2px_5px_rgba(0,0,0,0.25)]">
-          Welcome to <span className="text-yellow-300">PhotoPro</span>
-        </h1>
-
-        <p className="mt-6 max-w-2xl text-white/90 text-lg md:text-[18px] leading-relaxed">
-          AI-powered image enhancement for e-commerce, social media, and branding.
-          Remove backgrounds, apply brand kits, and create stunning visuals in minutes.
-        </p>
-
-        {/* CTA Buttons */}
-        <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-          <button
-            onClick={() => navigate("/single-processing")}
-            className="
-              inline-flex items-center justify-center gap-2
-              rounded-full
-              bg-gradient-to-r from-yellow-300 via-yellow-400 to-yellow-500
-              text-gray-900 font-semibold
-              px-7 py-3.5
-              shadow-lg shadow-yellow-500/30
-              hover:scale-[1.03] hover:shadow-yellow-400/40
-              active:scale-[0.97]
-              transition-all duration-200
-            "
-          >
-            <span className="text-xl">📸</span>
-            <span>Upload Your Product Photo</span>
-          </button>
-
-
+      {/* Hero (main expands to push footer down) */}
+      <main className="flex-1 relative">
+        {/* soft ambient halo (pure CSS, non-interactive) */}
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -top-24 w-[70vw] max-w-[900px] aspect-square rounded-full blur-3xl opacity-30"
+            style={{ background: "radial-gradient(50% 50% at 50% 50%, rgba(202,168,91,.20) 0%, transparent 70%)" }}
+            aria-hidden
+          />
         </div>
 
+        <section className="lux-container pt-[14vh] pb-[18vh] text-center">
+          {/* hero title */}
+          <h1 className="lux-hero-title text-5xl md:text-7xl font-extrabold leading-tight tracking-[-0.01em] lux-title-glow">
+            Elevate your <span className="lux-gold-text">Product Visuals</span>
+          </h1>
+
+          {/* subcopy */}
+          <p className="mt-6 max-w-xl md:max-w-2xl mx-auto lux-subtle text-[17px] md:text-[18px] leading-[1.75]">
+            AI-powered enhancement for e-commerce and branding. Remove backgrounds,
+            generate scenes, and export platform-perfect crops — in minutes.
+          </p>
+
+          {/* primary CTA */}
+          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => navigate("/single-processing")}
+              className="lux-btn lux-btn-shimmer lux-ring-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lux-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--lux-bg)]"
+            >
+              <span className="text-xl mr-2">📸</span>
+              Upload Your Product Photo
+            </button>
+          </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="text-center text-white/60 text-sm py-6">
-        © {new Date().getFullYear()} PhotoPro. All rights reserved.
+      {/* Footer pinned at bottom */}
+      <footer className="lux-sep mt-auto">
+        <div className="lux-container py-6 text-center text-sm lux-subtle">
+          © {new Date().getFullYear()} PhotoPro. All rights reserved.
+        </div>
       </footer>
     </div>
   );
