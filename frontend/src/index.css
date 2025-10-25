@@ -1,62 +1,80 @@
 @import "tailwindcss";
 
-/* === Luxe fonts === */
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700&display=swap");
 
-/* === Design tokens === */
+/* === Design tokens (Bright / Daylight Luxury) === */
 :root{
-  --lux-bg: #0b1220;           /* deep navy */
-  --lux-bg-2: #0e162a;         /* slightly lighter navy */
-  --lux-ink: #f8f6f1;          /* alabaster */
-  --lux-ink-dim: #c8c3b8;
-  --lux-gold: #f4d182;         /* soft real gold */
-  --lux-gold-2: #e7c15f;       /* deeper gold */
-  --lux-rose: #e8d7c8;         /* whisper rose for subtle gradients */
-  --lux-card: rgba(255,255,255,.06);
-  --lux-border: rgba(255,255,255,.12);
-  --lux-glow: 0 10px 35px rgba(244,209,130,.25);
+  --lux-bg: #f9f7f2;          /* ivory base */
+  --lux-bg-2: #ebe6dc;        /* soft beige */
+  --lux-ink: #1b1b1b;         /* rich charcoal */
+  --lux-ink-dim: #6f6b63;
+  --lux-gold: #caa85b;        /* champagne gold */
+  --lux-gold-2: #e6c66e;      /* lighter gold */
+  --lux-rose: #f6eee6;        /* warm whisper rose */
+  --lux-card: rgba(255,255,255,.85);
+  --lux-border: rgba(0,0,0,.08);
+  --lux-glow: 0 8px 28px rgba(244,209,130,.22);
 }
 
 /* === Global surface === */
-html, body, #root { height: 100%; background: var(--lux-bg); color: var(--lux-ink); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+html, body, #root {
+  height: 100%;
+  background: var(--lux-bg);
+  color: var(--lux-ink);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
 
-/* Luxury canvas with layered gradients + film grain */
+/* Luxury canvas with luminous gradients + subtle film grain */
 .lux-canvas{
   position: relative;
   background:
-    radial-gradient(1200px 700px at 20% -10%, rgba(248,246,241,.14), transparent 60%),
-    radial-gradient(900px 600px at 120% 10%, rgba(231,193,95,.10), transparent 55%),
-    radial-gradient(700px 500px at 50% 120%, rgba(232,215,200,.10), transparent 60%),
+    radial-gradient(1000px 700px at 40% 0%, rgba(244,209,130,0.15), transparent 70%),
+    radial-gradient(900px 600px at 80% 100%, rgba(255,245,230,0.20), transparent 70%),
     linear-gradient(180deg, var(--lux-bg) 0%, var(--lux-bg-2) 100%);
   overflow: hidden;
 }
-.lux-canvas:after{/* gentle film grain */
+.lux-canvas::before{ /* soft top light wash */
+  content:"";
+  position:absolute; inset:0;
+  background: linear-gradient(180deg, rgba(255,255,255,.25) 0%, rgba(255,255,255,0) 40%);
+  pointer-events:none; mix-blend-mode:screen;
+}
+.lux-canvas:after{/* gentle film grain (lighter) */
   content:"";
   position:absolute; inset:0;
   background-image:url("data:image/svg+xml;utf8,\
   <svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'>\
   <filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='table' tableValues='0 0 0 .06'/></feComponentTransfer></filter>\
   <rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  opacity:.35; pointer-events:none; mix-blend-mode: soft-light;
+  opacity:.15; pointer-events:none; mix-blend-mode:soft-light;
 }
 
 /* === Reusable luxe utilities (Tailwind-friendly) === */
 @layer utilities{
   .lux-container{ @apply max-w-7xl mx-auto px-5; }
 
-  .lux-glass{ 
-    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--lux-border);
+  /* Glass & Cards (bright) */
+  .lux-glass{
+    background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.5));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.6);
+    box-shadow: 0 10px 30px rgba(0,0,0,.05);
+  }
+  .lux-card{
+    @apply rounded-2xl;
+    background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.78));
+    border:1px solid var(--lux-border);
+    box-shadow: 0 10px 25px rgba(0,0,0,.06);
   }
 
+  /* Gold gradient text */
   .lux-gold-text{
     background: linear-gradient(90deg, var(--lux-gold), var(--lux-gold-2));
     -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 2px 12px rgba(255,240,180,.25);
   }
 
-  .lux-card{ @apply rounded-2xl; background: var(--lux-card); border:1px solid var(--lux-border); }
-
+  /* Primary button (kept) */
   .lux-btn{
     position:relative;
     @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-semibold;
@@ -65,22 +83,147 @@ html, body, #root { height: 100%; background: var(--lux-bg); color: var(--lux-in
     box-shadow: var(--lux-glow);
     transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
   }
-  .lux-btn:hover{ transform: translateY(-1px); filter: brightness(1.03); box-shadow: 0 14px 40px rgba(244,209,130,.32); }
+  .lux-btn:hover{ transform: translateY(-1px); filter: brightness(1.04); box-shadow: 0 14px 40px rgba(244,209,130,.30); }
   .lux-btn:active{ transform: translateY(0); filter: brightness(.98); }
 
+  /* Links */
   .lux-link{ color: var(--lux-ink); border-bottom:1px solid transparent; transition: color .2s, border-color .2s; }
   .lux-link:hover{ color: var(--lux-gold); border-color: var(--lux-gold); }
 
   .lux-hero-title{ font-family: "Playfair Display", serif; letter-spacing: .2px; }
   .lux-subtle{ color: var(--lux-ink-dim); }
 
+  /* Dividers & chips (bright) */
   .lux-sep{ height:1px; background: linear-gradient(90deg, transparent, var(--lux-border), transparent); }
-
   .lux-chip{
     @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs;
-    background: rgba(255,255,255,.06); border:1px solid var(--lux-border);
+    background: rgba(0,0,0,.04); border:1px solid var(--lux-border); color: var(--lux-ink);
   }
 
   .lux-ring-hover{ transition: box-shadow .2s; }
-  .lux-ring-hover:hover{ box-shadow: 0 0 0 6px rgba(244,209,130,.1); }
+  .lux-ring-hover:hover{ box-shadow: 0 0 0 6px rgba(202,168,91,.12); }
+
+  /* ---- Extras you already use ---- */
+
+  /* Section rhythm */
+  .lux-section{ @apply py-8 md:py-12; }
+
+  /* Elevated panel (bright) */
+  .lux-panel{
+    background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.7));
+    border:1px solid var(--lux-border);
+    border-radius: 1rem;
+    box-shadow: 0 12px 34px rgba(0,0,0,.07);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Hover lift */
+  .lux-hover{ transition: transform .25s ease, box-shadow .25s ease; }
+  .lux-hover:hover{ transform: translateY(-2px); box-shadow: 0 16px 42px rgba(0,0,0,.10); }
+
+  /* Forms */
+  .lux-label{ @apply text-sm font-medium; color: var(--lux-ink); }
+  .lux-hint{ @apply text-xs; color: var(--lux-ink-dim); }
+  .lux-input{
+    @apply w-full rounded-xl px-3 py-2.5 text-sm outline-none;
+    color: var(--lux-ink);
+    background: rgba(255,255,255,.9);
+    border:1px solid var(--lux-border);
+  }
+  .lux-input::placeholder{ color: var(--lux-ink-dim); }
+  .lux-input:focus{
+    box-shadow: 0 0 0 6px rgba(202,168,91,.10);
+    border-color: var(--lux-gold);
+  }
+
+  /* Compact grids */
+  .lux-grid-2{ @apply grid gap-4 sm:grid-cols-2; }
+  .lux-grid-3{ @apply grid gap-4 md:grid-cols-3; }
+
+  /* Table shell */
+  .lux-table{ @apply w-full text-sm; border-collapse: separate; border-spacing: 0; }
+  .lux-th{ @apply text-left px-4 py-3; color: var(--lux-ink); border-bottom:1px solid var(--lux-border); }
+  .lux-td{ @apply px-4 py-3; color: var(--lux-ink-dim); border-bottom:1px solid var(--lux-border); }
+
+  /* Badge/Pill */
+  .lux-pill{ @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs; background: rgba(0,0,0,.04); border:1px solid var(--lux-border); color:var(--lux-ink); }
+
+  /* Mini title glow */
+  .lux-title-glow{ text-shadow: 0 1px 0 rgba(255,255,255,.7), 0 10px 30px rgba(231,193,95,.12); }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce){ .lux-hover{ transition: none !important; } }
+
+  /* Buttons: outline + shimmer (kept) */
+  .lux-btn-outline {
+    @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-semibold transition;
+    color: var(--lux-gold);
+    border: 1.5px solid var(--lux-gold);
+    background: transparent;
+  }
+  .lux-btn-outline:hover {
+    background: rgba(202,168,91,0.10);
+    box-shadow: 0 0 0 3px rgba(202,168,91,0.12);
+  }
+  .lux-btn-outline:active { filter: brightness(0.95); }
+
+  .lux-btn-shimmer {
+    background-image:
+      linear-gradient(180deg, var(--lux-gold), var(--lux-gold-2)),
+      linear-gradient(120deg, transparent 0 40%, rgba(255,255,255,.35) 50%, transparent 60% 100%);
+    background-size: 100% 100%, 220% 100%;
+    background-position: center, -120% 0%;
+    transition: background-position .6s ease;
+  }
+  .lux-btn-shimmer:hover { background-position: center, 120% 0%; }
 }
+@layer utilities{
+  /* Ghost button (used in your modals and toolbars) */
+  .lux-btn-ghost{
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 font-semibold transition;
+    color: var(--lux-ink);
+    background: transparent;
+    border: 1px solid var(--lux-border);
+  }
+  .lux-btn-ghost:hover{ background: rgba(255,255,255,.06); box-shadow: 0 0 0 3px rgba(244,209,130,.10); }
+  .lux-btn-ghost:active{ filter: brightness(.96); }
+
+  /* Danger variant (for delete/close) */
+  .lux-btn-danger{
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 font-semibold transition;
+    color: #0f0f0f;
+    background: linear-gradient(180deg, #ff6b6b, #e24949);
+    box-shadow: 0 10px 30px rgba(226,73,73,.28);
+  }
+  .lux-btn-danger:hover{ filter: brightness(1.03); box-shadow: 0 14px 40px rgba(226,73,73,.34); }
+
+  /* Consistent focus ring (apply alongside buttons/inputs when needed) */
+  .lux-focus{
+    outline: none;
+    box-shadow: 0 0 0 2px var(--lux-bg), 0 0 0 4px rgba(244,209,130,.55);
+  }
+
+  /* Subtle surface blocks for thumbnails/preview wells */
+  .lux-surface{ background: rgba(255,255,255,.06); border:1px solid var(--lux-border); border-radius: .75rem; }
+
+  /* Thin scrollbar for overflow carousels */
+  .lux-scroll{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.25) transparent;
+  }
+  .lux-scroll::-webkit-scrollbar{ height: 10px; width: 10px; }
+  .lux-scroll::-webkit-scrollbar-thumb{
+    background: rgba(255,255,255,.25);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .lux-scroll::-webkit-scrollbar-track{ background: transparent; }
+
+  /* Backdrop polish for panels (WebKit) */
+  .lux-panel{ -webkit-backdrop-filter: blur(8px); }
+
+  /* Disabled state helper if you want stronger feedback than opacity */
+  .lux-disabled{ pointer-events: none; opacity: .55; filter: saturate(.8); }
+}
+
