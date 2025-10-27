@@ -14,6 +14,7 @@ venv/
 *.egg-info/
 dist/
 build/
+backend/app/outputs/
 
 # ---------------------
 # Node / React (Vite)
