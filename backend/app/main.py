@@ -32,9 +32,14 @@ def health():
 def version():
     return {"version": "0.1.0"}
 
-# Configure Routes
-from .routes import remove_bg_routes
-app.include_router(remove_bg_routes.router, tags=["remove-bg"])
+from .routes import (
+    image_io_routes,
+    remove_bg_routes,
+    text2image_routes,
+    image_crop_routes,
+)
 
-from .routes import text2image_routes
-app.include_router(text2image_routes.router, tags=["text2image"])
+app.include_router(image_io_routes.router)
+app.include_router(remove_bg_routes.router)
+app.include_router(text2image_routes.router)
+app.include_router(image_crop_routes.router)
