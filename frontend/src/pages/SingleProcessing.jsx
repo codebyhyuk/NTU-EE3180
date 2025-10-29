@@ -1119,8 +1119,8 @@ export default function ProcessingAdaptive() {
           </div>
         </section>
 
-        {/* 🆕 Step 7: AI Product Description */}
-        <section className="lux-panel mb-8 overflow-hidden">
+        {/* 🆕 Step 7: AI Product Description 
+        {/*<section className="lux-panel mb-8 overflow-hidden">
           <div className="p-5 md:p-6 border-b border-[var(--lux-border)]"
                style={{ background: "linear-gradient(90deg, rgba(231,193,95,.10), transparent)" }}>
             <div className="font-semibold">Step 7: AI Product Description</div>
@@ -1135,7 +1135,7 @@ export default function ProcessingAdaptive() {
           </div>
 
           <div className="px-5 md:px-6 py-5 grid md:grid-cols-[1fr_1.2fr] gap-5">
-            {/* Left: image + controls */}
+            {/* Left: image + controls 
             <div>
               <div className="rounded-xl bg-[rgba(255,255,255,.06)] border border-[var(--lux-border)] h-56 md:h-64 flex items-center justify-center overflow-hidden p-2">
                 {files.length ? (
@@ -1216,7 +1216,7 @@ export default function ProcessingAdaptive() {
               )}
             </div>
 
-            {/* Right: output editor */}
+            {/* Right: output editor 
             <div className="flex flex-col">
               <label className="text-sm lux-subtle mb-1">Generated Description</label>
               <div className="relative">
@@ -1253,7 +1253,7 @@ export default function ProcessingAdaptive() {
                   className="lux-btn disabled:opacity-60"
                 >
                   🔁 Regenerate
-                </button>*/}
+                </button>*
               </div>
 
               <p className="mt-3 text-xs lux-subtle">
@@ -1261,7 +1261,7 @@ export default function ProcessingAdaptive() {
               </p>
             </div>
           </div>
-        </section>
+        </section> */}
       </main>
 
       {/* Platform Preview Modal */}
