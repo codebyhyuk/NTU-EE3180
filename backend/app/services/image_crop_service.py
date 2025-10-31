@@ -8,7 +8,7 @@ from ..services.image_io_service import save_step_png  # 배치 저장용
 class ImageCropService:
     PRESETS = {
         "instagram": {"ratio": 1.0, "size": (1080, 1080)},
-        "shopee": {"ratio": 4 / 5, "size": (1080, 1350)},
+        "shopee": {"ratio": 5 / 4, "size": (1350, 1080)},
         "amazon": {"ratio": 1.0, "size": (2000, 2000)},
     }
 

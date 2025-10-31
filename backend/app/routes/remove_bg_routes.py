@@ -11,6 +11,7 @@ from ..services.image_io_service import (
     new_batch_id,
     short_uid,
     save_step_png,
+    public_url,
     zip_paths_for_batch_step,
     load_step_items,
     allowed_step_regex,
@@ -97,6 +98,7 @@ async def _run_remove_bg_pipeline(
                     "ok": True,
                     "saved_path": saved_path,
                     "stored_filename": out_name,
+                    "public_url": public_url(bid, "remove_bg", out_name),
                 }
             )
         else:

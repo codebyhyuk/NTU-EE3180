@@ -14,6 +14,7 @@ from ..services.image_io_service import (
     detect_latest_step,
     zip_paths_for_batch_step,
     save_original_uploads,
+    load_step_items,
     allowed_step_regex,
 )
 
@@ -56,6 +57,20 @@ async def io_export_zip_post(req: ZipFromPathsReq):
                 z.write(p, arcname=p.name)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=export.zip"})
+
+@router.get("/batches/{batch_id}/steps/{step}/{filename}")
+async def io_fetch_step_file(batch_id: str, step: str, filename: str):
+    items = load_step_items(batch_id, step, filenames=[filename], include_bytes=False)
+    if not items:
+        raise HTTPException(status_code=404, detail="File not found")
+    path = Path(items[0]["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File missing on server")
+    return StreamingResponse(
+        path.open("rb"),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 @router.post("/uploads")
 async def io_upload_images(

@@ -11,6 +11,7 @@ from ..services.image_io_service import (
     save_step_png,
     new_batch_id,
     short_uid,
+    public_url,
     load_step_items,
     allowed_step_regex,
 )
@@ -77,6 +78,7 @@ async def generate_text2image(
                         "filename": item["filename"],
                         "stored_filename": out_name,
                         "saved_path": saved_path,
+                        "public_url": public_url(target_batch, "text2image", out_name),
                     }
                 )
             except Exception as e:

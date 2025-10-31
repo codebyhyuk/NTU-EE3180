@@ -1,6 +1,7 @@
 // src/App.jsx
 import React from "react";
 import { useNavigate, Link } from "react-router-dom";
+import SiteFooter from "./components/SiteFooter";
 
 export default function App() {
   const navigate = useNavigate();
@@ -63,13 +64,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* Footer pinned at bottom */}
-      <footer className="lux-sep mt-auto">
-        <div className="lux-container py-6 text-center text-sm lux-subtle">
-          © {new Date().getFullYear()} PhotoPro. All rights reserved.
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
-

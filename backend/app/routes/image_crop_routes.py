@@ -12,6 +12,7 @@ from ..services.image_io_service import (
     load_step_items,
     allowed_step_regex,
     new_batch_id,
+    public_url,
 )
 
 router = APIRouter(prefix="/crop", tags=["Image Crop"])
@@ -153,6 +154,7 @@ def _run_crop_pipeline(
                     "filename": filename,
                     "stored_filename": out_name,
                     "saved_path": saved_path,
+                    "public_url": public_url(batch_id, "crop", out_name),
                 }
             )
         except Exception as e:

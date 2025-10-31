@@ -1,18 +1,13 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-
-/* ============================================
-   🔌 Fake backend simulation — replace later
-   Each function must resolve to a Blob.
-============================================ */
-async function apiRemoveBg(blob)                { await new Promise(r=>setTimeout(r,800)); return blob; }
-async function apiAddShadow(blob)               { await new Promise(r=>setTimeout(r,600)); return blob; }
-async function apiApplyBrand(blob, description) { await new Promise(r=>setTimeout(r,700)); return blob; }
-async function apiCrop(blob, { width, height }) { await new Promise(r=>setTimeout(r,700)); return blob; }
-async function apiCropServer(blob, { width, height, id }, viewport) {
-  await new Promise(r => setTimeout(r, 600));
-  return blob;
-}
+import SiteFooter from "../components/SiteFooter";
+import {
+  uploadOriginals,
+  removeBackgroundBatch,
+  generateBackgrounds,
+  cropPresetBatch,
+  fetchImageBlob,
+} from "../lib/photoService";
 
 /* ============================================
    🧠 Fake AI description generator (replace later)
@@ -69,6 +64,23 @@ function toNormalizedViewport(track, frameW, frameH) {
     width: Math.min(1, wImg / track.natW),
     height: Math.min(1, hImg / track.natH),
   };
+}
+
+const REMOVE_BG_HINT =
+  "We couldn't remove the background. Please retry with a photo where the subject stands out clearly against a simple background.";
+
+function formatRemoveBgError(raw) {
+  if (!raw) return REMOVE_BG_HINT;
+  if (typeof raw === "string") {
+    return REMOVE_BG_HINT;
+  }
+  if (Array.isArray(raw)) {
+    return REMOVE_BG_HINT;
+  }
+  if (typeof raw === "object") {
+    if (raw.message) return REMOVE_BG_HINT;
+  }
+  return REMOVE_BG_HINT;
 }
 
 /* =========================
@@ -153,16 +165,44 @@ function InteractiveCropper({ cropper, setCropper, options, onClose }) {
 
   const downloadAll = async () => {
     if (!frameSize.w || !frameSize.h) return;
-    const tasks = cropper.tracks.map(async (tr, i) => {
-      const vp = toNormalizedViewport(tr, frameSize.w, frameSize.h);
-      const out = await apiCropServer(tr.baseBlob, opt, vp);
-      const url = URL.createObjectURL(out);
-      const a = document.createElement("a");
-      a.href = url; a.download = `cropped_${i + 1}_${opt.id}.png`; a.click();
-      URL.revokeObjectURL(url);
-    });
-    await Promise.all(tasks);
-    onClose();
+    if (!cropper.batchId || !cropper.sourceStep) {
+      alert("Crop session missing batch information.");
+      return;
+    }
+    try {
+      await Promise.all(
+        cropper.tracks.map(async (tr, i) => {
+          const vp = toNormalizedViewport(tr, frameSize.w, frameSize.h);
+          const box = {
+            x: Math.max(0, Math.round(vp.x * tr.natW)),
+            y: Math.max(0, Math.round(vp.y * tr.natH)),
+            width: Math.max(1, Math.round(vp.width * tr.natW)),
+            height: Math.max(1, Math.round(vp.height * tr.natH)),
+          };
+          const resp = await cropPresetBatch({
+            batchId: cropper.batchId,
+            sourceStep: cropper.sourceStep,
+            filenames: [tr.storedFilename],
+            preset: opt.id,
+            boxes: { [tr.storedFilename]: box },
+            asZip: false,
+          });
+          const item = resp.items?.find(it => it.ok && it.public_url);
+          if (!item) throw new Error(resp.items?.[0]?.error || "Cropping failed");
+          const blob = await fetchImageBlob(item.public_url);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `cropped_${i + 1}_${opt.id}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+        })
+      );
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Manual cropping failed.");
+    }
   };
 
   return (
@@ -253,13 +293,17 @@ export default function ProcessingAdaptive() {
   /* ---------- core states ---------- */
   const [files, setFiles] = useState([]);        // original File[] (or Blobs)
   const [working, setWorking] = useState([]);    // [{ url, blob }] aligned with files (only accepted bg-removed)
+  const [serverState, setServerState] = useState({
+    batchId: null,
+    input: [],
+    removeBg: [],
+    text2image: [],
+  });
+  const [currentStep, setCurrentStep] = useState("input");
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState("");
 
   /* ---------- steps ---------- */
-  const [removeBg, setRemoveBg] = useState(false);
-  const [addShadow, setAddShadow] = useState(false);
-  const [brandKitChoice, setBrandKitChoice] = useState(null);
   const [brandText, setBrandText] = useState("");
   const [bgShadowOption, setBgShadowOption] = useState(null);
 
@@ -268,9 +312,9 @@ export default function ProcessingAdaptive() {
   const [isCropping, setIsCropping] = useState(false);
   const [cropper, setCropper] = useState(null);
   const CROP_OPTIONS = [
-    { id: "amazon", label: "🛒 Amazon",    width: 2000, height: 2000 },
-    { id: "shopee", label: "🛍️ Shopee",    width: 1080, height: 1080 },
-    { id: "igpost", label: "📱 Instagram",  width: 1080, height: 1920 },
+    { id: "amazon", label: "🛒 Amazon", width: 2000, height: 2000 },
+    { id: "shopee", label: "🛍️ Shopee (Landscape)", width: 1350, height: 1080 },
+    { id: "instagram", label: "📱 Instagram", width: 1080, height: 1080 },
   ];
 
   /* ---------- NEW: Step 7 (Descriptions) ---------- */
@@ -377,34 +421,35 @@ export default function ProcessingAdaptive() {
       const newFile = picked[0];
 
       setFiles(prev => { const next = prev.slice(); next[replaceIndex] = newFile; return next; });
-      setWorking(prev => { const next = prev.slice(); if (next[replaceIndex]?.url) URL.revokeObjectURL(next[replaceIndex].url); next[replaceIndex] = undefined; return next; });
-
-      (async () => {
-        try {
-          setBgReview(prev => {
-            const cache = prev.cache.slice();
-            cache[replaceIndex] = { ...(cache[replaceIndex] || {}), loading: true, error: null, url: null, blob: null, accepted: false };
-            return { ...prev, cache };
-          });
-
-          const outBlob = await apiRemoveBg(newFile);
-          const url = URL.createObjectURL(outBlob);
-
-          setBgReview(prev => {
-            const cache = prev.cache.slice();
-            cache[replaceIndex] = { blob: outBlob, url, loading: false, error: null, accepted: false };
-            return { ...prev, cache };
-          });
-        } catch (err) {
-          setBgReview(prev => {
-            const cache = prev.cache.slice();
-            cache[replaceIndex] = { ...(cache[replaceIndex] || {}), loading: false, error: err?.message || "Processing failed", accepted: false };
-            return { ...prev, cache };
-          });
-        } finally {
-          setReplaceIndex(null);
-        }
-      })();
+      setWorking(prev => {
+        const next = prev.slice();
+        if (next[replaceIndex]?.url?.startsWith("blob:")) URL.revokeObjectURL(next[replaceIndex].url);
+        next[replaceIndex] = undefined;
+        return next;
+      });
+      setServerState(prev => {
+        if (!prev) return prev;
+        const nextInput = prev.input.slice();
+        const nextRemove = prev.removeBg.slice();
+        const nextText = prev.text2image.slice();
+        if (replaceIndex < nextInput.length) nextInput[replaceIndex] = null;
+        if (replaceIndex < nextRemove.length) nextRemove[replaceIndex] = null;
+        if (replaceIndex < nextText.length) nextText[replaceIndex] = null;
+        return {
+          batchId: prev.batchId,
+          input: nextInput,
+          removeBg: nextRemove,
+          text2image: nextText,
+        };
+      });
+      setBgReview(prev => {
+        prev.cache?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
+        return { open: false, index: 0, cache: [] };
+      });
+      setCurrentStep("input");
+      setStatus("Image replaced. Please run background removal again.");
+      setTimeout(() => setStatus(""), 1500);
+      setReplaceIndex(null);
 
       e.target.value = "";
       return;
@@ -413,13 +458,17 @@ export default function ProcessingAdaptive() {
     // Default: full replace
     setFiles(picked);
     // Revoke any working object URLs we created
-    setWorking(prev => { prev?.forEach(x => x?.url && URL.revokeObjectURL(x.url)); return []; });
-    setRemoveBg(false);
-    setAddShadow(false);
-    setBrandKitChoice(null);
+    setWorking(prev => { prev?.forEach(x => x?.url?.startsWith("blob:") && URL.revokeObjectURL(x.url)); return []; });
     setSelectedCrop(null);
     setStatus("");
     setBgReview({ open: false, index: 0, cache: [] });
+    setServerState({
+      batchId: null,
+      input: [],
+      removeBg: [],
+      text2image: [],
+    });
+    setCurrentStep("input");
 
     // reset Step 7 caches
     setDescs([]); setDescLoading([]); setDescError([]);
@@ -431,16 +480,28 @@ export default function ProcessingAdaptive() {
     if (idx < 0 || idx >= files.length) return;
 
     const w = working[idx];
-    if (w?.url) URL.revokeObjectURL(w.url);
+    if (w?.url?.startsWith("blob:")) URL.revokeObjectURL(w.url);
 
     const reviewItem = bgReview.cache?.[idx];
-    if (reviewItem?.url) URL.revokeObjectURL(reviewItem.url);
+    if (reviewItem?.url?.startsWith("blob:")) URL.revokeObjectURL(reviewItem.url);
 
     setFiles(prev => prev.filter((_, i) => i !== idx));
     setWorking(prev => prev.filter((_, i) => i !== idx));
     setDescs(prev => prev.filter((_, i) => i !== idx));
     setDescLoading(prev => prev.filter((_, i) => i !== idx));
     setDescError(prev => prev.filter((_, i) => i !== idx));
+    setServerState(prev => {
+      if (!prev) return prev;
+      const nextInput = prev.input.filter((_, i) => i !== idx);
+      const nextRemove = prev.removeBg.filter((_, i) => i !== idx);
+      const nextText = prev.text2image.filter((_, i) => i !== idx);
+      return {
+        batchId: nextInput.length ? prev.batchId : null,
+        input: nextInput,
+        removeBg: nextRemove,
+        text2image: nextText,
+      };
+    });
 
     setActiveIndex(prev => {
       if (prev > idx) return prev - 1;
@@ -460,13 +521,12 @@ export default function ProcessingAdaptive() {
   }
 
   /* ---------- blob helpers ---------- */
-  const getBlobAt = async (i) => working[i]?.blob || files[i];
-  const setWorkingAt = (i, blob) => {
+  const setWorkingAt = (i, blob, info = {}) => {
     const url = URL.createObjectURL(blob);
     setWorking((prev) => {
       const next = prev.slice();
-      if (next[i]?.url) URL.revokeObjectURL(next[i].url);
-      next[i] = { url, blob };
+      if (next[i]?.url?.startsWith("blob:")) URL.revokeObjectURL(next[i].url);
+      next[i] = { url, blob, ...info };
       return next;
     });
   };
@@ -474,43 +534,99 @@ export default function ProcessingAdaptive() {
   /* ---------- all-accepted gate ---------- */
   const allAccepted = files.length > 0 && files.every((_, i) => Boolean(working[i]?.blob));
 
-  /* ---------- generic runner ---------- */
-  async function runStep(stepFn) {
-    if (!files.length) return alert("Please select image(s) first.");
-    if (!allAccepted) return alert("Please Accept background removal for all images before continuing.");
-    setIsBusy(true); setStatus("Processing...");
+  const ensureBackgroundsReady = () => {
+    if (!files.length) {
+      alert("Please select image(s) first.");
+      return false;
+    }
+    if (!allAccepted) {
+      alert("Please accept background removal for all images before continuing.");
+      return false;
+    }
+    if (!serverState.batchId) {
+      alert("Run background removal first.");
+      return false;
+    }
+    if (!serverState.removeBg.length || serverState.removeBg.some(name => !name)) {
+      alert("Background removal results missing. Please re-run Step 1.");
+      return false;
+    }
+    return true;
+  };
+
+  async function runTextToImage(option, promptValue) {
+    if (!ensureBackgroundsReady()) return false;
+    const prompt = (promptValue || "").trim() || "Product photography background";
+    const filenames = serverState.removeBg.slice();
+    setIsBusy(true);
+    setStatus("Generating backgrounds...");
     try {
-      if (files.length === 1) {
-        const out = await stepFn(await getBlobAt(0));
-        setWorkingAt(0, out);
+      const { batch_id, items } = await generateBackgrounds({
+        batchId: serverState.batchId,
+        sourceStep: "remove_bg",
+        filenames,
+        option,
+        prompt,
+      });
+
+      const results = await Promise.all(items.map(async (item, idx) => {
+        if (!item.ok) {
+          return { idx, ok: false, error: item.error || "Generation failed" };
+        }
+        const blob = await fetchImageBlob(item.public_url);
+        return {
+          idx,
+          ok: true,
+          blob,
+          storedFilename: item.stored_filename,
+          publicUrl: item.public_url,
+        };
+      }));
+
+      const nextText = (serverState.text2image.length
+        ? serverState.text2image.slice()
+        : Array(files.length).fill(null));
+      const failures = [];
+      results.forEach(res => {
+        if (!res.ok) {
+          failures.push(res);
+          if (res.idx < nextText.length) nextText[res.idx] = null;
+          return;
+        }
+        setWorkingAt(res.idx, res.blob, {
+          storedFilename: res.storedFilename,
+          publicUrl: res.publicUrl,
+          step: "text2image",
+        });
+        if (res.idx < nextText.length) nextText[res.idx] = res.storedFilename;
+      });
+
+      setServerState(prev => ({
+        batchId: batch_id,
+        input: prev.input,
+        removeBg: prev.removeBg,
+        text2image: nextText,
+      }));
+      setCurrentStep("text2image");
+
+      if (failures.length) {
+        setStatus("Some images failed");
+        alert(`Background generation failed for: ${failures.map(f => `#${f.idx + 1}`).join(", ")}`);
       } else {
-        await Promise.all(files.map(async (_, i) => {
-          const out = await stepFn(await getBlobAt(i));
-          setWorkingAt(i, out);
-        }));
+        setStatus("Done ✓");
       }
-      setStatus("Done ✓");
+      setTimeout(() => setStatus(""), 900);
+      return failures.length === 0;
     } catch (e) {
-      console.error(e); setStatus("Failed");
+      console.error(e);
+      setStatus("Failed");
+      alert(e?.response?.data?.detail || e?.message || "Background generation failed.");
+      setTimeout(() => setStatus(""), 900);
+      return false;
     } finally {
       setIsBusy(false);
-      setTimeout(() => setStatus(""), 900);
     }
   }
-
-  /* ---------- step actions ---------- */
-  const onAddShadow = async () => {
-    if (!files.length) return alert("Please select image(s) first.");
-    setAddShadow(true);
-    await runStep(apiAddShadow);
-  };
-  const onNoShadow = () => setAddShadow(false);
-  const onCreateBrandKit = async () => {
-    if (!brandText.trim()) return alert("Describe your brand style first.");
-    setBrandKitChoice("create");
-    await runStep((blob) => apiApplyBrand(blob, brandText.trim()));
-  };
-  const onSkipBrandKit = () => setBrandKitChoice("skip");
 
   /* ---------- downloads ---------- */
   const downloadAll = () => {
@@ -541,23 +657,55 @@ export default function ProcessingAdaptive() {
     const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
     setIsCropping(true);
     try {
+      if (!serverState.batchId) {
+        alert("Run background removal before cropping.");
+        return;
+      }
+      const useText2Image =
+        serverState.text2image.length === files.length &&
+        serverState.text2image.every(Boolean);
+      const filenames = useText2Image ? serverState.text2image : serverState.removeBg;
+      const sourceStep = useText2Image ? "text2image" : "remove_bg";
+      if (!filenames.length || filenames.some(name => !name)) {
+        alert("Missing processed images for cropping. Please complete previous steps.");
+        return;
+      }
+
       if (files.length > 1) {
-        await Promise.all(files.map(async (_, i) => {
-          const base = working[i]?.blob || files[i];
-          const out  = await apiCrop(base, opt);
-          const url  = URL.createObjectURL(out);
-          const a = document.createElement("a");
-          a.href = url; a.download = `cropped_${i + 1}_${opt.id}.png`; a.click();
-          URL.revokeObjectURL(url);
-        }));
-      } else {
-        const base = working[0]?.blob || files[0];
-        const out  = await apiCrop(base, opt);
-        const url  = URL.createObjectURL(out);
+        const zipBlob = await cropPresetBatch({
+          batchId: serverState.batchId,
+          sourceStep,
+          filenames,
+          preset: opt.id,
+          asZip: true,
+        });
+        const url = URL.createObjectURL(zipBlob);
         const a = document.createElement("a");
-        a.href = url; a.download = `cropped_${opt.id}.png`; a.click();
+        a.href = url;
+        a.download = `${serverState.batchId}_${opt.id}_crop.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const resp = await cropPresetBatch({
+          batchId: serverState.batchId,
+          sourceStep,
+          filenames,
+          preset: opt.id,
+          asZip: false,
+        });
+        const firstOk = resp.items?.find(item => item.ok && item.public_url);
+        if (!firstOk) throw new Error(resp.items?.[0]?.error || "Cropping failed");
+        const blob = await fetchImageBlob(firstOk.public_url);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `cropped_${opt.id}.png`;
+        a.click();
         URL.revokeObjectURL(url);
       }
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Cropping failed.");
     } finally {
       setIsCropping(false);
     }
@@ -571,13 +719,35 @@ export default function ProcessingAdaptive() {
     const opt = CROP_OPTIONS.find(o => o.id === selectedCrop);
     const urls = files.map((_, i) => displayUrlAt(i));
     const imgs = await Promise.all(urls.map(loadImage));
-    const tracks = await Promise.all(imgs.map(async (img, i) => ({
-      x: 0, y: 0, scale: 1,
-      natW: img.naturalWidth, natH: img.naturalHeight,
+    if (!serverState.batchId) return alert("Run background removal before cropping.");
+    const useText2Image =
+      serverState.text2image.length === files.length &&
+      serverState.text2image.every(Boolean);
+    const filenames = useText2Image ? serverState.text2image : serverState.removeBg;
+    const sourceStep = useText2Image ? "text2image" : "remove_bg";
+    if (!filenames.length || filenames.some(name => !name)) {
+      alert("Missing processed images for cropping. Please complete previous steps.");
+      return;
+    }
+    const tracks = imgs.map((img, i) => ({
+      x: 0,
+      y: 0,
+      scale: 1,
+      natW: img.naturalWidth,
+      natH: img.naturalHeight,
       img,
-      baseBlob: working[i]?.blob || files[i]
-    })));
-    setCropper({ open: true, index: 0, optId: opt.id, tracks, dragging: false, last: { x: 0, y: 0 } });
+      storedFilename: filenames[i],
+    }));
+    setCropper({
+      open: true,
+      index: 0,
+      optId: opt.id,
+      tracks,
+      dragging: false,
+      last: { x: 0, y: 0 },
+      batchId: serverState.batchId,
+      sourceStep,
+    });
   };
 
   /* ======================================================
@@ -598,39 +768,104 @@ export default function ProcessingAdaptive() {
 
   async function openRemoveBgReview() {
     if (!files.length) return alert("Please select image(s) first.");
+    setIsBusy(true);
     setStatus("Removing backgrounds...");
 
-    const results = await Promise.all(files.map(async (_, i) => {
-      try {
-        const base = files[i];
-        const outBlob = await apiRemoveBg(base);
-        const url = URL.createObjectURL(outBlob);
-        return { blob: outBlob, url, loading: false, error: null, accepted: false };
-      } catch (e) {
-        return { blob: null, url: null, loading: false, error: e?.message || "Processing failed", accepted: false };
-      }
-    }));
+    // Clear previous previews/object URLs
+    setBgReview(prev => {
+      prev.cache?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
+      return { open: false, index: 0, cache: [] };
+    });
+    setWorking(prev => {
+      prev?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
+      return Array(files.length).fill(undefined);
+    });
 
-    setBgReview({ open: true, index: 0, cache: results });
-    setStatus("Done ✓"); setTimeout(() => setStatus(""), 900);
+    try {
+      const uploadRes = await uploadOriginals(files);
+      const batchId = uploadRes.batch_id;
+      const inputNames = uploadRes.items.map(item => item.stored_filename);
+
+      const removeRes = await removeBackgroundBatch({
+        batchId,
+        sourceStep: "input",
+        filenames: inputNames,
+        concurrent: Math.min(files.length, 6),
+      });
+
+      const cache = await Promise.all(removeRes.items.map(async (item) => {
+        if (!item.ok) {
+          if (item.error) console.warn("remove-bg error:", item.error);
+          return {
+            blob: null,
+            url: null,
+            loading: false,
+            error: formatRemoveBgError(item.error),
+            accepted: false,
+            storedFilename: null,
+            publicUrl: null,
+          };
+        }
+        const blob = await fetchImageBlob(item.public_url);
+        const url = URL.createObjectURL(blob);
+        return {
+          blob,
+          url,
+          loading: false,
+          error: null,
+          accepted: false,
+          storedFilename: item.stored_filename,
+          publicUrl: item.public_url,
+        };
+      }));
+
+      const nextBatchId = removeRes.batch_id || batchId;
+      setServerState({
+        batchId: nextBatchId,
+        input: inputNames,
+        removeBg: Array(files.length).fill(null),
+        text2image: Array(files.length).fill(null),
+      });
+      setBgReview({ open: true, index: 0, cache });
+      setCurrentStep("input");
+      setStatus("Done ✓");
+      setTimeout(() => setStatus(""), 900);
+    } catch (e) {
+      console.error(e);
+      setStatus("Failed");
+      alert(formatRemoveBgError(e?.response?.data?.detail || e?.message));
+      setTimeout(() => setStatus(""), 900);
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function cancelBgReview() {
     setBgReview(prev => {
-      prev.cache?.forEach(entry => entry?.url && URL.revokeObjectURL(entry.url));
+      prev.cache?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
       return { open: false, index: 0, cache: [] };
     });
-    setWorking([]);        // discard accepted outputs
-    setRemoveBg(false);    // step 1 is undone
+    setWorking(prev => {
+      prev?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
+      return [];
+    });
+    setServerState({
+      batchId: null,
+      input: [],
+      removeBg: [],
+      text2image: [],
+    });
+    setCurrentStep("input");
     setStatus("Background review canceled — changes discarded");
     setTimeout(() => setStatus(""), 1200);
   }
 
   function finishBgReview() {
     setBgReview(prev => {
-      prev.cache?.forEach(entry => entry?.url && URL.revokeObjectURL(entry.url));
+      prev.cache?.forEach(entry => entry?.url?.startsWith("blob:") && URL.revokeObjectURL(entry.url));
       return { open: false, index: 0, cache: [] };
     });
+    setCurrentStep("remove_bg");
     setStatus("All images accepted ✓");
     setTimeout(() => setStatus(""), 900);
   }
@@ -646,8 +881,17 @@ export default function ProcessingAdaptive() {
       return { ...prev, cache };
     });
 
-    setWorkingAt(i, entry.blob);
-    setRemoveBg(true);
+    setServerState(prev => {
+      const nextRemove = prev.removeBg.slice();
+      nextRemove[i] = entry.storedFilename || null;
+      return { ...prev, removeBg: nextRemove };
+    });
+
+    setWorkingAt(i, entry.blob, {
+      storedFilename: entry.storedFilename,
+      publicUrl: entry.publicUrl,
+      step: "remove_bg",
+    });
 
     setBgReview(prev => {
       const nextIdx = findNextUnaccepted(prev.cache, i + 1);
@@ -661,30 +905,67 @@ export default function ProcessingAdaptive() {
 
   const tryAgainCurrentBg = async () => {
     const i = bgReview.index;
+    const inputFilename = serverState.input?.[i];
+    if (!serverState.batchId || !inputFilename) {
+      alert("Missing original upload. Please rerun background removal.");
+      return;
+    }
 
     setBgReview(prev => {
       const cache = prev.cache.slice();
       cache[i] = { ...(cache[i] || {}), loading: true, error: null, accepted: false };
       return { ...prev, cache };
     });
-    setWorking(prev => { const next = prev.slice(); if (next[i]?.url) URL.revokeObjectURL(next[i].url); next[i] = undefined; return next; });
+    setWorking(prev => {
+      const next = prev.slice();
+      if (next[i]?.url?.startsWith("blob:")) URL.revokeObjectURL(next[i].url);
+      next[i] = undefined;
+      return next;
+    });
+    setServerState(prev => {
+      const nextRemove = prev.removeBg.slice();
+      if (i < nextRemove.length) nextRemove[i] = null;
+      const nextText = prev.text2image.slice();
+      if (i < nextText.length) nextText[i] = null;
+      return { ...prev, removeBg: nextRemove, text2image: nextText };
+    });
 
     try {
-      const base = files[i];
-      const outBlob = await apiRemoveBg(base);
-      const url = URL.createObjectURL(outBlob);
+      const response = await removeBackgroundBatch({
+        batchId: serverState.batchId,
+        sourceStep: "input",
+        filenames: [inputFilename],
+        concurrent: 1,
+      });
+      const item = response.items?.[0];
+      if (!item || !item.ok) throw new Error(item?.error || "Processing failed");
+      const blob = await fetchImageBlob(item.public_url);
+      const url = URL.createObjectURL(blob);
 
       setBgReview(prev => {
         const cache = prev.cache.slice();
         const old = cache[i];
-        if (old?.url && old.url !== url) URL.revokeObjectURL(old.url);
-        cache[i] = { blob: outBlob, url, loading: false, error: null, accepted: false };
+        if (old?.url?.startsWith("blob:") && old.url !== url) URL.revokeObjectURL(old.url);
+        cache[i] = {
+          blob,
+          url,
+          loading: false,
+          error: null,
+          accepted: false,
+          storedFilename: item.stored_filename,
+          publicUrl: item.public_url,
+        };
         return { ...prev, cache };
       });
     } catch (e) {
       setBgReview(prev => {
         const cache = prev.cache.slice();
-        cache[i] = { ...(cache[i] || {}), loading: false, error: e?.message || "Processing failed", accepted: false };
+        cache[i] = {
+          ...(cache[i] || {}),
+          loading: false,
+          error: formatRemoveBgError(e?.response?.data?.detail || e?.message),
+          accepted: false,
+        };
         return { ...prev, cache };
       });
     }
@@ -867,10 +1148,9 @@ export default function ProcessingAdaptive() {
 
             <button
               onClick={async () => {
+                if (isBusy) return;
                 setBgShadowOption("shadow-white");
-                setAddShadow(true);
-                await onAddShadow();
-                setBrandKitChoice("white");
+                await runTextToImage(3, "Pure white seamless studio background");
               }}
               disabled={!files.length || isBusy || !allAccepted}
               className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
@@ -883,8 +1163,13 @@ export default function ProcessingAdaptive() {
             <button
               onClick={() => {
                 setBgShadowOption("skip");
-                setAddShadow(false);
-                setBrandKitChoice("skip");
+                setServerState(prev => ({
+                  batchId: prev.batchId,
+                  input: prev.input,
+                  removeBg: prev.removeBg,
+                  text2image: Array(files.length).fill(null),
+                }));
+                setCurrentStep("remove_bg");
               }}
               disabled={!files.length || isBusy || !allAccepted}
               className={`rounded-xl border border-[var(--lux-border)] p-6 text-center transition lux-hover
@@ -915,14 +1200,11 @@ export default function ProcessingAdaptive() {
                 <button
                   onClick={async () => {
                     if (!brandText.trim()) return alert("Please describe your background first.");
-                    if (bgShadowOption === "shadow-text") {
-                      setAddShadow(true);
-                      await onAddShadow();
-                    } else {
-                      setAddShadow(false);
+                    const option = bgShadowOption === "shadow-text" ? 1 : 2;
+                    const ok = await runTextToImage(option, brandText);
+                    if (ok) {
+                      setBgShadowOption(null);
                     }
-                    await onCreateBrandKit();
-                    setBgShadowOption(null);
                   }}
                   className="lux-btn"
                 >
@@ -1264,6 +1546,8 @@ export default function ProcessingAdaptive() {
         </section> */}
       </main>
 
+      <SiteFooter className="lux-sep" />
+
       {/* Platform Preview Modal */}
       {previewModal.open && (
         <div className="fixed inset-0 z-[100]">
@@ -1469,6 +1753,3 @@ export default function ProcessingAdaptive() {
     </div>
   );
 }
-
-
-

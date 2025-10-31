@@ -39,6 +39,10 @@ def ensure_step(step: str) -> str:
         raise HTTPException(status_code=400, detail=f"Unknown pipeline step '{step}'")
     return step
 
+def public_url(batch_id: str, step: str, filename: str) -> str:
+    ensure_step(step)
+    return f"/io/batches/{batch_id}/steps/{step}/{filename}"
+
 def save_step_png(batch_id: str, step: str, filename: str, png_bytes: bytes) -> str:
     ensure_step(step)
     out_dir = OUTPUTS_ROOT / batch_id / step
@@ -128,6 +132,7 @@ def save_original_uploads(
                 "original_filename": name,
                 "stored_filename": out_name,
                 "saved_path": save_step_png(bid, step, out_name, png_bytes),
+                "public_url": public_url(bid, step, out_name),
             }
         )
     return {"batch_id": bid, "count": len(saved), "items": saved}

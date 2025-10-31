@@ -1,6 +1,7 @@
 // src/pages/BatchProcessing.jsx
 import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import SiteFooter from "../components/SiteFooter";
 
 /** ------- tiny canvas helpers (client-side mock processing) -------- */
 const loadImage = (src) =>
@@ -149,7 +150,7 @@ export default function BatchProcessing() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb] text-gray-900">
+    <div className="min-h-screen flex flex-col bg-[#f6f7fb] text-gray-900">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -174,7 +175,7 @@ export default function BatchProcessing() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-10">
+      <main className="flex-1 max-w-6xl mx-auto px-4 py-10 w-full">
         <h1 className="text-2xl md:text-3xl font-extrabold text-center mb-8">
           Batch Processing
         </h1>
@@ -403,7 +404,11 @@ export default function BatchProcessing() {
           </div>
         </section>
       </main>
+
+      <SiteFooter
+        className="border-t border-gray-200 bg-white"
+        containerClassName="max-w-6xl mx-auto px-4 text-sm text-gray-600"
+      />
     </div>
   );
 }
-
